@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title data-ui-text="optionsPageTitle"></title>
+  </head>
+  <body>
+    <main class="settings">
+      <section class="settings__card" aria-labelledby="settings-title">
+        <div class="settings__brand" aria-hidden="true" data-ui-text="trigger"></div>
+        <div>
+          <p class="settings__eyebrow" data-ui-text="appName"></p>
+          <h1 id="settings-title" data-ui-text="optionsHeading"></h1>
+          <p class="settings__intro" data-ui-text="optionsIntro"></p>
+        </div>
+
+        <form id="settings-form" novalidate>
+          <label for="api-key" data-ui-text="apiKeyLabel"></label>
+          <div class="settings__input-row">
+            <input
+              id="api-key"
+              name="api-key"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              data-ui-placeholder="apiKeyPlaceholder"
+            />
+            <button id="toggle-key" class="button button--quiet" type="button" data-ui-text="show"></button>
+          </div>
+          <div class="settings__actions">
+            <button class="button button--primary" type="submit" data-ui-text="save"></button>
+            <button id="clear-key" class="button button--quiet" type="button" data-ui-text="clear"></button>
+            <button id="test-key" class="button button--secondary" type="button" data-ui-text="testConnection"></button>
+          </div>
+        </form>
+
+        <p id="settings-status" class="settings__status" role="status" aria-live="polite"></p>
+        <p class="settings__note" data-ui-text="optionsNote"></p>
+      </section>
+    </main>
+    <script type="module" src="/src/options/options.ts"></script>
+  </body>
+</html>

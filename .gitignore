@@ -1,3 +1,7 @@
 .agents/
 .claude/
 skills-lock.json
+.scratch/
+node_modules/
+dist/
+.DS_Store

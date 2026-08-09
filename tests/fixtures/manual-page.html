@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Highlight Translate 手动验收页</title>
+    <style>
+      body {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 48px 24px 120vh;
+        color: #182230;
+        font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+        line-height: 1.7;
+      }
+
+      section {
+        margin: 36px 0;
+        padding: 20px;
+        border: 1px solid #d0d5dd;
+        border-radius: 12px;
+      }
+
+      textarea {
+        width: 100%;
+        min-height: 80px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Highlight Translate 手动验收页</h1>
+    <section>
+      <h2>中文</h2>
+      <p id="chinese">这是一段用于验证本地中文路由的文本。</p>
+    </section>
+    <section>
+      <h2>英文</h2>
+      <p id="english">This paragraph verifies streaming translation and preserves https://example.com as data.</p>
+    </section>
+    <section>
+      <h2>混合与未知</h2>
+      <p id="mixed">这是一段以中文内容为主，仅包含 mixed 作为示例的完整文本。</p>
+      <p id="unknown">GPT</p>
+    </section>
+    <section>
+      <h2>无效内容</h2>
+      <p id="url">https://example.com</p>
+      <p id="email">reader@example.com</p>
+      <p id="numbers">1234567890</p>
+    </section>
+    <section>
+      <h2>可编辑区域</h2>
+      <textarea id="editable">This text must not show the translation trigger.</textarea>
+    </section>
+    <section>
+      <h2>超长内容</h2>
+      <button id="fill-long" type="button">生成 5,001 字符测试文本</button>
+      <p id="too-long">点击按钮后生成。</p>
+    </section>
+    <script>
+      document.querySelector('#fill-long').addEventListener('click', () => {
+        document.querySelector('#too-long').textContent = `a${'字'.repeat(5_000)}`;
+      });
+    </script>
+  </body>
+</html>
