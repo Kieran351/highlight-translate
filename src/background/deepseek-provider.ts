@@ -4,6 +4,8 @@ import type { StreamTranslationInput, TranslationProvider } from './provider';
 
 type FetchLike = typeof fetch;
 
+const defaultFetch: FetchLike = (input, init) => globalThis.fetch(input, init);
+
 export const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 export const DEEPSEEK_MODEL = 'deepseek-v4-flash';
 
@@ -113,7 +115,7 @@ function requestBody(text: string, stream: boolean): string {
 }
 
 export class DeepSeekProvider implements TranslationProvider {
-  constructor(private readonly fetchImpl: FetchLike = fetch) {}
+  constructor(private readonly fetchImpl: FetchLike = defaultFetch) {}
 
   async stream({ apiKey, text, signal, onChunk }: StreamTranslationInput): Promise<void> {
     let response: Response;
