@@ -3,6 +3,8 @@ import { UI_TEXT } from '../shared/ui-text';
 
 export type CardStatus = 'idle' | 'streaming' | 'complete' | 'partial' | 'error';
 
+export type RequestActivity = 'active' | 'stopped';
+
 export interface CardState {
   requestId: string | null;
   direction: string;
@@ -92,4 +94,8 @@ export function applyServerMessage(state: CardState, message: ServerPortMessage)
 
 export function canCopyResult(state: CardState): boolean {
   return state.text.length > 0 && (state.status === 'complete' || state.status === 'partial');
+}
+
+export function getRequestActivity(state: CardState): RequestActivity {
+  return state.status === 'streaming' ? 'active' : 'stopped';
 }

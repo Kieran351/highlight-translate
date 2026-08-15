@@ -6,6 +6,7 @@ import {
   beginRetry,
   canCopyResult,
   createCardState,
+  getRequestActivity,
 } from '../../src/content/card-state';
 
 describe('translation card state', () => {
@@ -84,5 +85,70 @@ describe('translation card state', () => {
     expect(state.status).toBe('partial');
     expect(state.text).toBe('旧的部分结果');
     expect(canCopyResult(state)).toBe(true);
+  });
+});
+
+describe('request activity', () => {
+  it('maps only streaming to active', () => {
+    expect(getRequestActivity(createCardState())).toBe('stopped');
+
+    const streaming = beginRequest(createCardState(), 'r1');
+    expect(getRequestActivity(streaming)).toBe('active');
+
+    expect(getRequestActivity(beginRetry(streaming, 'r2'))).toBe('active');
+  });
+
+  it('treats complete, partial, error and local results as stopped', () => {
+    let state = beginRequest(createCardState(), 'r1');
+    state = applyServerMessage(state, { type: 'chunk', requestId: 'r1', text: '译文' });
+    state = applyServerMessage(state, { type: 'complete', requestId: 'r1' });
+    expect(getRequestActivity(state)).toBe('stopped');
+
+    let partial = beginRequest(createCardState(), 'r2');
+    partial = applyServerMessage(partial, {
+      type: 'error',
+      requestId: 'r2',
+      code: 'network',
+      message: '网络连接失败，请检查网络后重试。',
+      retryable: true,
+      partial: true,
+    });
+    expect(getRequestActivity(partial)).toBe('stopped');
+
+    let failed = beginRequest(createCardState(), 'r3');
+    failed = applyServerMessage(failed, {
+      type: 'error',
+      requestId: 'r3',
+      code: 'network',
+      message: '网络连接失败，请检查网络后重试。',
+      retryable: true,
+      partial: false,
+    });
+    expect(getRequestActivity(failed)).toBe('stopped');
+
+    expect(getRequestActivity({
+      ...createCardState(),
+      status: 'error',
+      errorMessage: '选区内容过长',
+    })).toBe('stopped');
+  });
+
+  it('ignores stale terminal events when deriving activity', () => {
+    let current = beginRequest(createCardState(), 'current');
+    current = applyServerMessage(current, { type: 'complete', requestId: 'stale' });
+    expect(getRequestActivity(current)).toBe('active');
+
+    current = applyServerMessage(current, {
+      type: 'error',
+      requestId: 'stale',
+      code: 'network',
+      message: '网络连接失败，请检查网络后重试。',
+      retryable: true,
+      partial: false,
+    });
+    expect(getRequestActivity(current)).toBe('active');
+
+    current = applyServerMessage(current, { type: 'cancelled', requestId: 'stale' });
+    expect(getRequestActivity(current)).toBe('active');
   });
 });

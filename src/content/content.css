@@ -78,6 +78,16 @@ button {
   gap: 12px;
 }
 
+.ht-header[data-drag-state="ready"] {
+  cursor: grab;
+  user-select: none;
+}
+
+.ht-header[data-drag-state="dragging"] {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .ht-direction {
   overflow: hidden;
   color: #344054;

@@ -21,6 +21,11 @@ export interface OverlayPosition {
   visible: boolean;
 }
 
+export interface OverlayPoint {
+  x: number;
+  y: number;
+}
+
 interface SelectionEndpointSource {
   anchorNode: Node | null;
   anchorOffset: number;
@@ -58,6 +63,17 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max));
 }
 
+export function constrainOverlayPosition(
+  desired: OverlayPoint,
+  overlay: OverlaySize,
+  viewport: ViewportSize,
+): OverlayPoint {
+  return {
+    x: clamp(desired.x, VIEWPORT_MARGIN, viewport.width - overlay.width - VIEWPORT_MARGIN),
+    y: clamp(desired.y, VIEWPORT_MARGIN, viewport.height - overlay.height - VIEWPORT_MARGIN),
+  };
+}
+
 export function placeOverlay(
   anchor: AnchorRect,
   overlay: OverlaySize,
@@ -79,9 +95,10 @@ export function placeOverlay(
     y = anchor.top - gap - overlay.height;
   }
 
+  const constrained = constrainOverlayPosition({ x, y }, overlay, viewport);
   return {
-    x: clamp(x, VIEWPORT_MARGIN, viewport.width - overlay.width - VIEWPORT_MARGIN),
-    y: clamp(y, VIEWPORT_MARGIN, viewport.height - overlay.height - VIEWPORT_MARGIN),
+    x: constrained.x,
+    y: constrained.y,
     visible,
   };
 }
