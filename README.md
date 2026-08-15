@@ -83,12 +83,6 @@ Only the header is a drag handle; the close button, result area, and action butt
 - The card position is not persisted across closing the card, making a new selection, refreshing, or navigating.
 - Only one translation card and one complete-selection language route are handled at a time; mixed-language selections are not split into separate translations.
 
-## Verification status
-
-The automated suite, production build checks, and Chrome UI acceptance have passed for the MVP and draggable-card behavior. The draggable card was also manually rechecked with a real mouse/trackpad workflow on August 15, 2026.
-
-A successful live DeepSeek streaming request has **not** yet been verified in the recorded Chrome environment. That environment returned the extension's normalized network error for both connection testing and an English selection. Streaming, SSE parsing, cancellation, stale-result isolation, timeouts, partial results, and retry are covered by replaceable-provider tests and synthetic SSE browser acceptance, but those checks do not prove that a real DeepSeek request will succeed on every machine.
-
 ## Privacy and data flow
 
 Highlight Translate processes each selection as follows:
