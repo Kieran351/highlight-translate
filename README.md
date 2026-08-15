@@ -143,15 +143,6 @@ npm run verify:dist
 
 After UI changes, also reload `dist/` in Chrome and test the real selection, translation-card, scrolling, resizing, copying, closing, retry, and dragging flows. Automated checks cannot prove that a live provider request or browser interaction works end to end.
 
-## Specifications and validation
-
-- [MVP specification](docs/specs/001-mvp/spec.md)
-- [Draggable translation-card specification](docs/specs/002-draggable-card/spec.md)
-- [ADR 001: viewport-fixed free position after dragging](docs/adr/001-draggable-card-position-mode.md)
-- [Project glossary](docs/glossary.md)
-- [MVP validation record](docs/validation/001-mvp.md)
-- [Draggable-card validation record](docs/validation/002-draggable-card.md)
-
 ## License
 
 MIT. See [LICENSE](LICENSE).
