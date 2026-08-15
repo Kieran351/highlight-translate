@@ -143,15 +143,6 @@ npm run verify:dist
 
 修改界面后，还应在 Chrome 中重新加载 `dist/`，实际验证选区、翻译卡片、滚动、窗口缩放、复制、关闭、重试和拖动流程。自动化检查不能证明真实提供商请求或浏览器交互已经端到端成功。
 
-## 规格与验收
-
-- [MVP 规格](docs/specs/001-mvp/spec.md)
-- [可拖动翻译卡片规格](docs/specs/002-draggable-card/spec.md)
-- [ADR 001：拖动后使用视口自由位置](docs/adr/001-draggable-card-position-mode.md)
-- [项目术语表](docs/glossary.md)
-- [MVP 验收记录](docs/validation/001-mvp.md)
-- [拖动验收记录](docs/validation/002-draggable-card.md)
-
 ## 开源许可
 
 MIT，详见 [LICENSE](LICENSE)。
