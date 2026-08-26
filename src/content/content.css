@@ -68,6 +68,15 @@ button {
   grid-template-rows: auto minmax(80px, 1fr) auto auto;
 }
 
+.ht-card[data-size-mode="user"] {
+  max-height: none;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
+.ht-card[data-size-mode="user"] .ht-result {
+  min-height: 0;
+}
+
 .ht-header {
   display: flex;
   min-height: 48px;
@@ -119,7 +128,8 @@ button {
 .ht-result {
   min-height: 90px;
   padding: 16px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   color: #182230;
   font-family: inherit;
   font-size: 15px;
@@ -149,11 +159,47 @@ button {
 .ht-actions {
   display: flex;
   min-height: 48px;
-  padding: 8px 10px;
+  padding: 8px 38px 8px 10px;
   border-top: 1px solid #eaecf0;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.ht-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  color: #667085;
+  cursor: nwse-resize;
+  place-items: center;
+  user-select: none;
+}
+
+.ht-resize-grip {
+  position: relative;
+  display: grid;
+  width: 12px;
+  height: 12px;
+  place-items: center;
+}
+
+.ht-resize-grip::before {
+  width: 12px;
+  height: 1px;
+  background: currentColor;
+  box-shadow: 0 4px currentColor, 0 8px currentColor;
+  content: "";
+  transform: rotate(-45deg);
+  transform-origin: right center;
+}
+
+.ht-resize-handle:hover,
+.ht-resize-handle[data-resize-state="resizing"] {
+  color: #175cd3;
 }
 
 .ht-button {
@@ -226,6 +272,15 @@ button {
   .ht-button--primary {
     border-color: #528bff;
     background: #175cd3;
+  }
+
+  .ht-resize-handle {
+    color: #d0d5dd;
+  }
+
+  .ht-resize-handle:hover,
+  .ht-resize-handle[data-resize-state="resizing"] {
+    color: #84adff;
   }
 
   .ht-status[data-tone="error"] {

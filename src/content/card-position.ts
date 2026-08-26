@@ -1,5 +1,5 @@
 import type { RequestActivity } from './card-state';
-import { constrainOverlayPosition } from './geometry';
+import { constrainOverlayPosition, exceedsPointerDragThreshold } from './geometry';
 import type { OverlayPoint, OverlaySize, ViewportSize } from './geometry';
 
 export type PositionMode =
@@ -52,8 +52,6 @@ export type CardPositionEvent =
   | { type: 'request-started' }
   | { type: 'layout-changed'; cardSize: OverlaySize; viewport: ViewportSize };
 
-const DRAG_THRESHOLD_DISTANCE_SQUARED = 16;
-
 export function createCardPositionState(): CardPositionState {
   return { position: { kind: 'anchored' }, drag: { kind: 'idle' } };
 }
@@ -102,9 +100,7 @@ export function reduceCardPosition(
         if (event.type === 'pointer-up') {
           return endDrag(state);
         }
-        const pendingDx = event.pointer.x - state.drag.pointerStart.x;
-        const pendingDy = event.pointer.y - state.drag.pointerStart.y;
-        if (pendingDx * pendingDx + pendingDy * pendingDy <= DRAG_THRESHOLD_DISTANCE_SQUARED) {
+        if (!exceedsPointerDragThreshold(state.drag.pointerStart, event.pointer)) {
           return state;
         }
       }
