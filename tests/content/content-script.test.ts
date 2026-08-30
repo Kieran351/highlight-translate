@@ -244,6 +244,23 @@ describe('content script resize interaction', () => {
     }
   });
 
+  it('leaves the streaming state when the extension runtime namespace is unavailable', () => {
+    ui.activeSelection = { text: 'Hello', range: {} as Range, tooLong: false };
+    const chromeGlobal = chrome as unknown as { runtime?: typeof chrome.runtime };
+    const savedRuntime = chromeGlobal.runtime;
+    delete chromeGlobal.runtime;
+
+    try {
+      expect(() => ui.startRequest(false)).not.toThrow();
+      expect(ui.state.status).toBe('error');
+      expect(ui.state.errorMessage).toBe('扩展已更新，请刷新当前页面后重试。');
+      expect(ui.state.retryable).toBe(false);
+      expect(ui.resizeHandle.classList.contains('ht-hidden')).toBe(false);
+    } finally {
+      chromeGlobal.runtime = savedRuntime;
+    }
+  });
+
   it('clears the inline size and returns to automatic mode when the card closes', () => {
     ui.sizeState = {
       mode: { kind: 'user', target: { width: 560, height: 420 } },
