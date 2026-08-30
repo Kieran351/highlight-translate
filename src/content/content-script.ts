@@ -530,31 +530,63 @@ export class HighlightTranslateUi {
     this.startRequest(false);
   }
 
-  private ensurePort(): chrome.runtime.Port {
+  private ensurePort(): chrome.runtime.Port | null {
     if (this.port) {
       return this.port;
     }
 
-    const port = chrome.runtime.connect({ name: PORT_NAME });
-    port.onMessage.addListener((message: unknown) => this.onServerMessage(message));
-    port.onDisconnect.addListener(() => {
-      if (this.port !== port) {
-        return;
+    try {
+      if (typeof chrome === 'undefined' || typeof chrome.runtime?.connect !== 'function') {
+        return null;
       }
+
+      const port = chrome.runtime.connect({ name: PORT_NAME });
+      port.onMessage.addListener((message: unknown) => this.onServerMessage(message));
+      port.onDisconnect.addListener(() => {
+        if (this.port !== port) {
+          return;
+        }
+        this.port = null;
+        if (this.state.status === 'streaming' && this.state.requestId) {
+          this.onServerMessage({
+            type: 'error',
+            requestId: this.state.requestId,
+            code: 'network',
+            message: getErrorPresentation('network').message,
+            retryable: true,
+            partial: this.state.text.length > 0,
+          });
+        }
+      });
+      this.port = port;
+      return port;
+    } catch {
       this.port = null;
-      if (this.state.status === 'streaming' && this.state.requestId) {
-        this.onServerMessage({
-          type: 'error',
-          requestId: this.state.requestId,
-          code: 'network',
-          message: getErrorPresentation('network').message,
-          retryable: true,
-          partial: this.state.text.length > 0,
-        });
-      }
+      return null;
+    }
+  }
+
+  private failInvalidExtensionContext(requestId: string): void {
+    this.onServerMessage({
+      type: 'error',
+      requestId,
+      code: 'network',
+      message: UI_TEXT.extensionContextInvalid,
+      retryable: false,
+      partial: this.state.text.length > 0,
     });
-    this.port = port;
-    return port;
+  }
+
+  private postPortMessage(port: chrome.runtime.Port, message: ClientPortMessage): boolean {
+    try {
+      port.postMessage(message);
+      return true;
+    } catch {
+      if (this.port === port) {
+        this.port = null;
+      }
+      return false;
+    }
   }
 
   private startRequest(retry: boolean): void {
@@ -580,7 +612,10 @@ export class HighlightTranslateUi {
       requestId,
       text: this.activeSelection.text,
     };
-    this.ensurePort().postMessage(message);
+    const port = this.ensurePort();
+    if (!port || !this.postPortMessage(port, message)) {
+      this.failInvalidExtensionContext(requestId);
+    }
   }
 
   private retry(): void {
@@ -653,7 +688,7 @@ export class HighlightTranslateUi {
     }
 
     const message: ClientPortMessage = { type: 'cancel', requestId: this.state.requestId };
-    this.port.postMessage(message);
+    this.postPortMessage(this.port, message);
   }
 
   private close(cancel: boolean): void {

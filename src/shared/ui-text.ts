@@ -9,6 +9,7 @@ export const UI_TEXT = {
   copy: '复制',
   copied: '已复制',
   copyFailed: '复制失败，请重试。',
+  extensionContextInvalid: '扩展已更新，请刷新当前页面后重试。',
   translating: '正在翻译…',
   incompleteTranslation: '翻译未完成',
   unableToTranslate: '无法翻译',
