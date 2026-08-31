@@ -11,6 +11,8 @@ import {
 import type { CardState } from './card-state';
 import { createCardPositionState, reduceCardPosition } from './card-position';
 import type { CardPositionState } from './card-position';
+import { createCardSizeState, reduceCardSize, resolveUserCardSize } from './card-size';
+import type { CardSizeState } from './card-size';
 import { endpointFromSelection, getRangeEndpointRect, placeOverlay } from './geometry';
 import type { OverlaySize, ViewportSize } from './geometry';
 import { evaluateSelection, isEditableNode } from './selection-policy';
@@ -51,7 +53,7 @@ function isServerMessage(value: unknown): value is ServerPortMessage {
     && ['route', 'chunk', 'complete', 'error', 'cancelled'].includes(record.type);
 }
 
-class HighlightTranslateUi {
+export class HighlightTranslateUi {
   private readonly host = document.createElement('div');
   private readonly shadow: ShadowRoot;
   private readonly trigger = element('button', 'ht-trigger ht-hidden', UI_TEXT.trigger);
@@ -64,10 +66,12 @@ class HighlightTranslateUi {
   private readonly settingsButton = element('button', 'ht-button', UI_TEXT.openSettings);
   private readonly copyButton = element('button', 'ht-button ht-button--primary', UI_TEXT.copy);
   private readonly closeButton = element('button', 'ht-close', '×');
+  private readonly resizeHandle = element('span', 'ht-resize-handle');
   private readonly cardResizeObserver = new ResizeObserver(() => this.schedulePosition());
   private activeSelection: ActiveSelection | null = null;
   private state: CardState = createCardState();
   private positionState: CardPositionState = createCardPositionState();
+  private sizeState: CardSizeState = createCardSizeState();
   private port: chrome.runtime.Port | null = null;
   private followOutput = true;
   private positionFrame: number | null = null;
@@ -100,6 +104,9 @@ class HighlightTranslateUi {
 
     this.status.setAttribute('role', 'status');
     const actions = element('footer', 'ht-actions');
+    const resizeGrip = element('span', 'ht-resize-grip');
+    this.resizeHandle.setAttribute('aria-hidden', 'true');
+    this.resizeHandle.append(resizeGrip);
     for (const button of [this.retryButton, this.settingsButton, this.copyButton]) {
       button.type = 'button';
     }
@@ -107,7 +114,7 @@ class HighlightTranslateUi {
     this.settingsButton.classList.add('ht-hidden');
     this.copyButton.disabled = true;
     actions.append(this.settingsButton, this.retryButton, this.copyButton);
-    this.card.append(this.header, this.result, this.status, actions);
+    this.card.append(this.header, this.result, this.status, actions, this.resizeHandle);
   }
 
   private bindEvents(): void {
@@ -141,6 +148,11 @@ class HighlightTranslateUi {
     this.header.addEventListener('pointerup', (event) => this.onHeaderPointerUp(event));
     this.header.addEventListener('pointercancel', (event) => this.onHeaderPointerCancel(event));
     this.header.addEventListener('lostpointercapture', (event) => this.onHeaderCaptureLost(event));
+    this.resizeHandle.addEventListener('pointerdown', (event) => this.onResizePointerDown(event));
+    this.resizeHandle.addEventListener('pointermove', (event) => this.onResizePointerMove(event));
+    this.resizeHandle.addEventListener('pointerup', (event) => this.onResizePointerUp(event));
+    this.resizeHandle.addEventListener('pointercancel', (event) => this.onResizePointerCancel(event));
+    this.resizeHandle.addEventListener('lostpointercapture', (event) => this.onResizeCaptureLost(event));
     window.addEventListener('blur', () => this.onWindowBlur());
     window.addEventListener('scroll', () => this.schedulePosition(), true);
     window.addEventListener('resize', () => this.schedulePosition());
@@ -162,6 +174,14 @@ class HighlightTranslateUi {
     } else {
       this.header.dataset.dragState = 'disabled';
     }
+  }
+
+  private updateResizeFeedback(): void {
+    const active = getRequestActivity(this.state) === 'active';
+    this.resizeHandle.classList.toggle('ht-hidden', active);
+    this.resizeHandle.dataset.resizeState = active
+      ? 'disabled'
+      : this.sizeState.resize.kind === 'resizing' ? 'resizing' : 'ready';
   }
 
   private onHeaderPointerDown(event: PointerEvent): void {
@@ -250,9 +270,153 @@ class HighlightTranslateUi {
     this.updateDragFeedback();
   }
 
+  private onResizePointerDown(event: PointerEvent): void {
+    const next = reduceCardSize(this.sizeState, {
+      type: 'pointer-down',
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      isPrimary: event.isPrimary,
+      button: event.button,
+      pointer: { x: event.clientX, y: event.clientY },
+      cardSize: this.cardSize(),
+      requestActivity: getRequestActivity(this.state),
+    });
+    if (next === this.sizeState) {
+      return;
+    }
+
+    event.preventDefault();
+    this.sizeState = next;
+    try {
+      this.resizeHandle.setPointerCapture(event.pointerId);
+    } catch {
+      this.sizeState = reduceCardSize(this.sizeState, {
+        type: 'pointer-cancel',
+        pointerId: event.pointerId,
+      });
+    }
+    this.updateResizeFeedback();
+  }
+
+  private onResizePointerMove(event: PointerEvent): void {
+    if (
+      this.sizeState.resize.kind === 'idle'
+      || this.sizeState.resize.pointerId !== event.pointerId
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    const wasResizing = this.sizeState.resize.kind === 'resizing';
+    const previous = this.sizeState;
+    this.sizeState = reduceCardSize(this.sizeState, {
+      type: 'pointer-move',
+      pointerId: event.pointerId,
+      buttons: event.buttons,
+      pointer: { x: event.clientX, y: event.clientY },
+      viewport: this.viewportSize(),
+    });
+    if (this.sizeState.resize.kind === 'idle') {
+      this.releaseResizePointer(event.pointerId);
+      if (wasResizing) {
+        this.suppressNextMouseUp = true;
+      }
+    }
+    this.updateResizeFeedback();
+    if (this.sizeState !== previous) {
+      this.schedulePosition();
+    }
+  }
+
+  private onResizePointerUp(event: PointerEvent): void {
+    if (
+      this.sizeState.resize.kind === 'idle'
+      || this.sizeState.resize.pointerId !== event.pointerId
+    ) {
+      return;
+    }
+
+    const wasResizing = this.sizeState.resize.kind === 'resizing';
+    const wasPending = this.sizeState.resize.kind === 'pending';
+    this.sizeState = reduceCardSize(this.sizeState, {
+      type: 'pointer-up',
+      pointerId: event.pointerId,
+      buttons: event.buttons,
+      pointer: { x: event.clientX, y: event.clientY },
+      viewport: this.viewportSize(),
+    });
+    this.releaseResizePointer(event.pointerId);
+    if (wasResizing || (wasPending && this.sizeState.mode.kind === 'user')) {
+      this.suppressNextMouseUp = true;
+    }
+    this.updateResizeFeedback();
+    this.schedulePosition();
+  }
+
+  private onResizePointerCancel(event: PointerEvent): void {
+    if (
+      this.sizeState.resize.kind === 'idle'
+      || this.sizeState.resize.pointerId !== event.pointerId
+    ) {
+      return;
+    }
+
+    const wasResizing = this.sizeState.resize.kind === 'resizing';
+    this.sizeState = reduceCardSize(this.sizeState, {
+      type: 'pointer-cancel',
+      pointerId: event.pointerId,
+    });
+    this.releaseResizePointer(event.pointerId);
+    if (wasResizing) {
+      this.suppressNextMouseUp = true;
+    }
+    this.updateResizeFeedback();
+  }
+
+  private onResizeCaptureLost(event: PointerEvent): void {
+    if (
+      this.sizeState.resize.kind === 'idle'
+      || this.sizeState.resize.pointerId !== event.pointerId
+    ) {
+      return;
+    }
+
+    const wasResizing = this.sizeState.resize.kind === 'resizing';
+    this.sizeState = reduceCardSize(this.sizeState, {
+      type: 'capture-lost',
+      pointerId: event.pointerId,
+    });
+    if (wasResizing) {
+      this.suppressNextMouseUp = true;
+    }
+    this.updateResizeFeedback();
+  }
+
   private onWindowBlur(): void {
+    if (this.sizeState.resize.kind === 'resizing') {
+      this.suppressNextMouseUp = true;
+    }
+    this.releaseResizeSession();
+    this.sizeState = reduceCardSize(this.sizeState, { type: 'window-blur' });
     this.positionState = reduceCardPosition(this.positionState, { type: 'window-blur' });
     this.updateDragFeedback();
+    this.updateResizeFeedback();
+  }
+
+  private releaseResizePointer(pointerId: number): void {
+    try {
+      this.resizeHandle.releasePointerCapture(pointerId);
+    } catch {
+      return;
+    }
+  }
+
+  private releaseResizeSession(): void {
+    const resize = this.sizeState.resize;
+    if (resize.kind === 'idle') {
+      return;
+    }
+    this.releaseResizePointer(resize.pointerId);
   }
 
   private releasePointerSession(): void {
@@ -275,12 +439,25 @@ class HighlightTranslateUi {
     this.updateDragFeedback();
   }
 
+  private resetCardSizeState(): void {
+    this.releaseResizeSession();
+    this.sizeState = createCardSizeState();
+    this.card.style.removeProperty('width');
+    this.card.style.removeProperty('height');
+    this.card.removeAttribute('data-size-mode');
+    this.updateResizeFeedback();
+  }
+
   private onMouseUp(event: MouseEvent): void {
+    if (event.composedPath().includes(this.host)) {
+      this.suppressNextMouseUp = false;
+      return;
+    }
     if (this.suppressNextMouseUp) {
       this.suppressNextMouseUp = false;
       return;
     }
-    if (event.button !== 0 || event.composedPath().includes(this.host)) {
+    if (event.button !== 0) {
       return;
     }
 
@@ -317,6 +494,7 @@ class HighlightTranslateUi {
     this.cancelActiveRequest();
     this.card.classList.add('ht-hidden');
     this.resetPositionState();
+    this.resetCardSizeState();
     this.activeSelection = {
       text: evaluation.text,
       range: endpointRange,
@@ -352,31 +530,63 @@ class HighlightTranslateUi {
     this.startRequest(false);
   }
 
-  private ensurePort(): chrome.runtime.Port {
+  private ensurePort(): chrome.runtime.Port | null {
     if (this.port) {
       return this.port;
     }
 
-    const port = chrome.runtime.connect({ name: PORT_NAME });
-    port.onMessage.addListener((message: unknown) => this.onServerMessage(message));
-    port.onDisconnect.addListener(() => {
-      if (this.port !== port) {
-        return;
+    try {
+      if (typeof chrome === 'undefined' || typeof chrome.runtime?.connect !== 'function') {
+        return null;
       }
+
+      const port = chrome.runtime.connect({ name: PORT_NAME });
+      port.onMessage.addListener((message: unknown) => this.onServerMessage(message));
+      port.onDisconnect.addListener(() => {
+        if (this.port !== port) {
+          return;
+        }
+        this.port = null;
+        if (this.state.status === 'streaming' && this.state.requestId) {
+          this.onServerMessage({
+            type: 'error',
+            requestId: this.state.requestId,
+            code: 'network',
+            message: getErrorPresentation('network').message,
+            retryable: true,
+            partial: this.state.text.length > 0,
+          });
+        }
+      });
+      this.port = port;
+      return port;
+    } catch {
       this.port = null;
-      if (this.state.status === 'streaming' && this.state.requestId) {
-        this.onServerMessage({
-          type: 'error',
-          requestId: this.state.requestId,
-          code: 'network',
-          message: getErrorPresentation('network').message,
-          retryable: true,
-          partial: this.state.text.length > 0,
-        });
-      }
+      return null;
+    }
+  }
+
+  private failInvalidExtensionContext(requestId: string): void {
+    this.onServerMessage({
+      type: 'error',
+      requestId,
+      code: 'network',
+      message: UI_TEXT.extensionContextInvalid,
+      retryable: false,
+      partial: this.state.text.length > 0,
     });
-    this.port = port;
-    return port;
+  }
+
+  private postPortMessage(port: chrome.runtime.Port, message: ClientPortMessage): boolean {
+    try {
+      port.postMessage(message);
+      return true;
+    } catch {
+      if (this.port === port) {
+        this.port = null;
+      }
+      return false;
+    }
   }
 
   private startRequest(retry: boolean): void {
@@ -385,6 +595,11 @@ class HighlightTranslateUi {
     }
 
     this.cancelActiveRequest();
+    if (this.sizeState.resize.kind === 'resizing') {
+      this.suppressNextMouseUp = true;
+    }
+    this.releaseResizeSession();
+    this.sizeState = reduceCardSize(this.sizeState, { type: 'request-started' });
     const requestId = crypto.randomUUID().replaceAll('-', '');
     this.state = retry
       ? beginRetry(this.state, requestId)
@@ -397,7 +612,10 @@ class HighlightTranslateUi {
       requestId,
       text: this.activeSelection.text,
     };
-    this.ensurePort().postMessage(message);
+    const port = this.ensurePort();
+    if (!port || !this.postPortMessage(port, message)) {
+      this.failInvalidExtensionContext(requestId);
+    }
   }
 
   private retry(): void {
@@ -429,6 +647,7 @@ class HighlightTranslateUi {
     this.retryButton.classList.toggle('ht-hidden', !this.state.retryable);
     this.settingsButton.classList.toggle('ht-hidden', !this.state.showSettings);
     this.updateDragFeedback();
+    this.updateResizeFeedback();
 
     this.status.dataset.tone = this.state.status === 'error' || this.state.status === 'partial'
       ? 'error'
@@ -469,7 +688,7 @@ class HighlightTranslateUi {
     }
 
     const message: ClientPortMessage = { type: 'cancel', requestId: this.state.requestId };
-    this.port.postMessage(message);
+    this.postPortMessage(this.port, message);
   }
 
   private close(cancel: boolean): void {
@@ -477,6 +696,7 @@ class HighlightTranslateUi {
       this.cancelActiveRequest();
     }
     this.resetPositionState();
+    this.resetCardSizeState();
     this.trigger.classList.add('ht-hidden');
     this.card.classList.add('ht-hidden');
     this.activeSelection = null;
@@ -501,6 +721,10 @@ class HighlightTranslateUi {
 
     const cardHidden = this.card.classList.contains('ht-hidden');
     const overlay = cardHidden ? this.trigger : this.card;
+
+    if (!cardHidden) {
+      this.applyUserCardSize();
+    }
 
     if (cardHidden || this.positionState.position.kind === 'anchored') {
       let rect: DOMRect;
@@ -533,8 +757,32 @@ class HighlightTranslateUi {
       overlay.style.visibility = 'visible';
     }
   }
+
+  private applyUserCardSize(): void {
+    const resolved = resolveUserCardSize(this.sizeState, this.viewportSize());
+    if (!resolved) {
+      this.card.style.removeProperty('width');
+      this.card.style.removeProperty('height');
+      this.card.removeAttribute('data-size-mode');
+      return;
+    }
+
+    this.card.dataset.sizeMode = 'user';
+    const width = `${resolved.width}px`;
+    const height = `${resolved.height}px`;
+    if (this.card.style.width !== width) {
+      this.card.style.width = width;
+    }
+    if (this.card.style.height !== height) {
+      this.card.style.height = height;
+    }
+  }
+}
+
+export function mountHighlightTranslateUi(): HighlightTranslateUi | null {
+  return window.top === window ? new HighlightTranslateUi() : null;
 }
 
 if (window.top === window) {
-  new HighlightTranslateUi();
+  mountHighlightTranslateUi();
 }

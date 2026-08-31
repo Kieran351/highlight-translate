@@ -39,6 +39,7 @@ export interface SelectionEndpoint {
 }
 
 const VIEWPORT_MARGIN = 8;
+const POINTER_DRAG_THRESHOLD_SQUARED = 16;
 
 export function endpointFromSelection(selection: SelectionEndpointSource): SelectionEndpoint | null {
   return selection.focusNode
@@ -61,6 +62,27 @@ export function getRangeEndpointRect(range: Range): DOMRect {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+export function exceedsPointerDragThreshold(start: OverlayPoint, current: OverlayPoint): boolean {
+  const dx = current.x - start.x;
+  const dy = current.y - start.y;
+  return dx * dx + dy * dy > POINTER_DRAG_THRESHOLD_SQUARED;
+}
+
+export function constrainOverlaySize(
+  desired: OverlaySize,
+  viewport: ViewportSize,
+): OverlaySize {
+  const availableWidth = Math.max(0, viewport.width - VIEWPORT_MARGIN * 2);
+  const availableHeight = Math.max(0, viewport.height - VIEWPORT_MARGIN * 2);
+  const minimumWidth = Math.min(360, availableWidth);
+  const minimumHeight = Math.min(220, availableHeight);
+
+  return {
+    width: clamp(desired.width, minimumWidth, availableWidth),
+    height: clamp(desired.height, minimumHeight, availableHeight),
+  };
 }
 
 export function constrainOverlayPosition(

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { constrainOverlayPosition, endpointFromSelection, placeOverlay } from '../../src/content/geometry';
+import {
+  constrainOverlayPosition,
+  constrainOverlaySize,
+  endpointFromSelection,
+  exceedsPointerDragThreshold,
+  placeOverlay,
+} from '../../src/content/geometry';
 
 describe('overlay geometry', () => {
   it('places an overlay after the selection endpoint when space is available', () => {
@@ -116,5 +122,34 @@ describe('constrainOverlayPosition', () => {
       { width: 795, height: 595 },
       viewport,
     )).toEqual({ x: 8, y: 8 });
+  });
+});
+
+describe('overlay size geometry', () => {
+  it('uses a strict four pixel euclidean pointer threshold', () => {
+    expect(exceedsPointerDragThreshold({ x: 10, y: 10 }, { x: 14, y: 10 })).toBe(false);
+    expect(exceedsPointerDragThreshold({ x: 10, y: 10 }, { x: 14, y: 11 })).toBe(true);
+  });
+
+  it('clamps regular sizes to the 360 by 220 minimum and safe viewport maximum', () => {
+    expect(constrainOverlaySize(
+      { width: 100, height: 100 },
+      { width: 800, height: 600 },
+    )).toEqual({ width: 360, height: 220 });
+    expect(constrainOverlaySize(
+      { width: 900, height: 700 },
+      { width: 800, height: 600 },
+    )).toEqual({ width: 784, height: 584 });
+  });
+
+  it('uses the available safe area as both bounds in a small viewport', () => {
+    expect(constrainOverlaySize(
+      { width: 100, height: 100 },
+      { width: 320, height: 200 },
+    )).toEqual({ width: 304, height: 184 });
+    expect(constrainOverlaySize(
+      { width: 1000, height: 1000 },
+      { width: 320, height: 200 },
+    )).toEqual({ width: 304, height: 184 });
   });
 });

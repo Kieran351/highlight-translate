@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createCardPositionState, reduceCardPosition } from '../../src/content/card-position';
 import type { CardPositionEvent, CardPositionState } from '../../src/content/card-position';
+import { createCardSizeState, reduceCardSize, resolveUserCardSize } from '../../src/content/card-size';
 
 type PointerDownEvent = Extract<CardPositionEvent, { type: 'pointer-down' }>;
 type PointerMoveEvent = Extract<CardPositionEvent, { type: 'pointer-move' }>;
@@ -242,6 +243,48 @@ describe('card position state', () => {
       cardSize: CARD,
       viewport: VIEWPORT,
     })).toBe(initial);
+  });
+
+  it('uses the resolved size without changing anchored or free position mode', () => {
+    let sizeState = reduceCardSize(createCardSizeState(), {
+      type: 'pointer-down',
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true,
+      button: 0,
+      pointer: { x: 400, y: 300 },
+      cardSize: { width: 480, height: 300 },
+      requestActivity: 'stopped',
+    });
+    sizeState = reduceCardSize(sizeState, {
+      type: 'pointer-move',
+      pointerId: 1,
+      buttons: 1,
+      pointer: { x: 520, y: 500 },
+      viewport: VIEWPORT,
+    });
+    const actualSize = resolveUserCardSize(sizeState, { width: 320, height: 200 });
+    if (!actualSize) {
+      throw new Error('A valid resize must produce a user size');
+    }
+    expect(actualSize).toEqual({ width: 304, height: 184 });
+
+    const anchored = createCardPositionState();
+    expect(reduceCardPosition(anchored, {
+      type: 'layout-changed',
+      cardSize: actualSize,
+      viewport: { width: 320, height: 200 },
+    })).toBe(anchored);
+
+    let free = reduceCardPosition(createCardPositionState(), down());
+    free = reduceCardPosition(free, move({ pointer: { x: 430, y: 310 } }));
+    free = reduceCardPosition(free, {
+      type: 'layout-changed',
+      cardSize: actualSize,
+      viewport: { width: 320, height: 200 },
+    });
+    expect(free.position).toEqual({ kind: 'free', x: 8, y: 8 });
+    expect(free.drag.kind).toBe('dragging');
   });
 
   it('treats cancel-style events as idempotent when idle', () => {

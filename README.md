@@ -7,6 +7,7 @@ Translate selected foreign-language text into Simplified Chinese without leaving
 - Select text and translate it from a small button beside the selection.
 - Read streamed results in a compact card that preserves paragraphs, line breaks, and lists.
 - Move a completed, partial, local, or errored card out of the way by dragging its header.
+- Resize a stopped card from its lower-right handle; long results scroll inside the result area.
 - Keep credentials out of page scripts: the API key stays in trusted Chrome extension storage and is used only by the Service Worker.
 - Send only the complete text you selected—never the page URL, title, DOM, surrounding context, or rich-text markup.
 - Avoid unnecessary model calls: Chinese selections are detected and shown locally.
@@ -58,8 +59,9 @@ The key is stored in `chrome.storage.local` with access restricted to trusted ex
 3. If Chinese is the detected primary language, the card shows the original selection locally. Non-Chinese or unknown-language selections are sent to DeepSeek and streamed back in Simplified Chinese.
 4. Copy a complete result, retry a retryable failure, or close the card with **×**, `Esc`, or a click on the page outside the card.
 5. Once the request has stopped, drag the card by its header if it covers the content you are reading.
+6. Once the request has stopped, drag the lower-right handle to adjust width and height. The card keeps that size until it is closed or a new selection is made.
 
-Only the header is a drag handle; the close button, result area, and action buttons keep their normal behavior. A movement of about 4 px is required before dragging begins, and the card stays approximately 8 px inside the viewport. After its first valid drag, the card stays fixed to the viewport while the page scrolls. Its free position survives a retry, but resets when the card closes or a new selection is made. Dragging is disabled while an initial request or retry is actively streaming.
+Only the header moves the card, and only the lower-right handle resizes it; the close button, result area, and action buttons keep their normal behavior. A movement of about 4 px is required before either gesture begins, and the card stays approximately 8 px inside the viewport. After its first valid position drag, the card stays fixed to the viewport while the page scrolls. A resized card can exceed the automatic 60vh height limit, with overflow scrolling inside the result area. Its size and free position survive a retry, but both reset when the card closes or a new selection is made. Moving and resizing are disabled while an initial request or retry is actively streaming.
 
 ## What works today
 
@@ -70,6 +72,7 @@ Only the header is a drag handle; the close button, result area, and action butt
 - Local display for Chinese selections; DeepSeek streaming for non-Chinese and unknown selections.
 - Selection admission rules, a 5,000-character limit, cancellation, stale-result isolation, timeouts, normalized errors, partial results, retry, copy, dark mode, and responsive card placement.
 - Draggable stopped-state cards with viewport bounds, retry position retention, and anchored/free-position scrolling behavior.
+- Resizable stopped-state cards with viewport bounds, retry size retention, automatic temporary fitting during viewport changes, and result-area scrolling.
 - A Simplified Chinese interface and Simplified Chinese translation target.
 
 ## Current limitations
@@ -81,6 +84,7 @@ Only the header is a drag handle; the close button, result area, and action butt
 - DeepSeek is the only provider; the endpoint, model, target language, and UI language are not configurable.
 - There is no translation history, cache, cloud sync, account system, site blacklist, or in-extension pause switch.
 - The card position is not persisted across closing the card, making a new selection, refreshing, or navigating.
+- The card size is not persisted across closing the card, making a new selection, refreshing, or navigating; there is no control to restore automatic sizing during the same card lifetime.
 - Only one translation card and one complete-selection language route are handled at a time; mixed-language selections are not split into separate translations.
 
 ## Privacy and data flow
@@ -122,6 +126,10 @@ Click **Open settings** in the card or click the toolbar icon, save a DeepSeek A
 ### The card will not move
 
 Wait until the current translation or retry stops, then drag the header with the primary mouse/trackpad pointer. Dragging is intentionally frozen while the card is streaming, and the result area and buttons are not drag handles.
+
+### The card will not resize
+
+Wait until the current translation or retry stops, then drag the lower-right handle with the primary mouse/trackpad pointer. Resizing is intentionally frozen while the card is streaming. The card stays within the viewport, and an undersized viewport temporarily constrains the rendered size without replacing the size chosen for the current card.
 
 ### A rebuilt version does not appear in Chrome
 
