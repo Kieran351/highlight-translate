@@ -23,16 +23,39 @@ export class ConfigurationManager {
     return this.dependencies.store.read();
   }
 
-  async refresh(providerId: ProviderId, key: string): Promise<{ models: ProviderModel[]; catalogToken: string; catalogSummary: { receivedCount: number; selectableCount: number } }> {
+  async refresh(providerId: ProviderId, key: string): Promise<{ models: ProviderModel[]; catalogToken: string; catalogSummary: { receivedCount: number; selectableCount: number }; settings: SettingsSnapshot }> {
     const apiKey = key.trim();
     if (!apiKey) throw new ProviderFailure('invalid_configuration');
-    const received = await this.dependencies.resolveProvider(providerId).listModels({
-      apiKey, signal: AbortSignal.timeout(20_000),
-    });
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let received: ProviderModel[];
+    try {
+      received = await Promise.race([
+        this.dependencies.resolveProvider(providerId).listModels({ apiKey, signal: controller.signal }),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            reject(new ProviderFailure('timeout_models'));
+            controller.abort();
+          }, 20_000);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
     const models = received.filter((model) => model.supportsText !== false);
+    const settings = await this.dependencies.store.update((snapshot) => {
+      const saved = snapshot.configurations[providerId];
+      if (!saved || saved.apiKey !== apiKey) return false;
+      saved.models = models;
+      saved.catalogStatus = 'ready';
+      saved.selectionMissing = saved.selectedModelId !== null && !models.some((model) => model.id === saved.selectedModelId);
+    });
+    for (const [token, draft] of this.drafts) {
+      if (draft.providerId === providerId && draft.apiKey === apiKey) this.drafts.delete(token);
+    }
     const catalogToken = crypto.randomUUID();
     this.drafts.set(catalogToken, { providerId, apiKey, models });
-    return { models, catalogToken, catalogSummary: { receivedCount: received.length, selectableCount: models.length } };
+    return { models, catalogToken, settings, catalogSummary: { receivedCount: received.length, selectableCount: models.length } };
   }
 
   private async catalog(providerId: ProviderId, apiKey: string, modelId: string, catalogToken?: string): Promise<ProviderModel[]> {

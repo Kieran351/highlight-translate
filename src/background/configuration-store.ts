@@ -61,10 +61,10 @@ export class ConfigurationStore {
     } : {} };
   }
 
-  update(change: (snapshot: SettingsSnapshot) => void): Promise<SettingsSnapshot> {
+  update(change: (snapshot: SettingsSnapshot) => void | boolean): Promise<SettingsSnapshot> {
     const operation = this.writes.then(async () => {
       const snapshot = await this.readStored();
-      change(snapshot);
+      if (change(snapshot) === false) return snapshot;
       await this.storage.set({ [CONFIGURATION_STORAGE_KEY]: snapshot });
       return snapshot;
     });

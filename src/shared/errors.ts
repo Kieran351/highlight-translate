@@ -15,6 +15,7 @@ const ERROR_PRESENTATIONS: Record<AppErrorCode, ErrorPresentation> = {
   network: { message: '网络连接失败，请检查网络后重试。', retryable: true },
   empty_response: { message: '翻译服务没有返回有效内容，请重试。', retryable: true },
   invalid_stream: { message: '翻译响应格式无效，请重试。', retryable: true },
+  timeout_models: { message: '获取模型列表超时，请重试。', retryable: true },
   timeout_first: { message: '等待翻译结果超时，请重试。', retryable: true },
   timeout_idle: { message: '翻译响应中断，请重试。', retryable: true },
   timeout_total: { message: '本次翻译用时过长，请缩短内容后重试。', retryable: true },
