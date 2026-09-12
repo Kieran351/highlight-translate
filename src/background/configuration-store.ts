@@ -34,9 +34,10 @@ export class ConfigurationStore {
 
   constructor(private readonly storage: StorageAreaLike) {}
 
-  async read(): Promise<SettingsSnapshot> {
-    await this.writes;
-    return this.readStored();
+  read(): Promise<SettingsSnapshot> {
+    const operation = this.writes.then(() => this.readStored());
+    this.writes = operation.catch(() => undefined);
+    return operation;
   }
 
   private async readStored(): Promise<SettingsSnapshot> {
@@ -61,11 +62,12 @@ export class ConfigurationStore {
     } : {} };
   }
 
-  update(change: (snapshot: SettingsSnapshot) => void | boolean): Promise<SettingsSnapshot> {
+  update(change: (snapshot: SettingsSnapshot) => void | boolean, afterCommit?: () => void): Promise<SettingsSnapshot> {
     const operation = this.writes.then(async () => {
       const snapshot = await this.readStored();
-      if (change(snapshot) === false) return snapshot;
-      await this.storage.set({ [CONFIGURATION_STORAGE_KEY]: snapshot });
+      const changed = change(snapshot) !== false;
+      if (changed) await this.storage.set({ [CONFIGURATION_STORAGE_KEY]: snapshot });
+      afterCommit?.();
       return snapshot;
     });
     this.writes = operation.catch(() => undefined);

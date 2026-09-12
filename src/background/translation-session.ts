@@ -94,6 +94,19 @@ async function runTranslation(
     return;
   }
 
+  // Capture before language detection; local Chinese results never await this read.
+  let configurationPromise: Promise<{ configuration: RequestConfiguration | null } | { failed: true }> | undefined;
+  if (dependencies.getRequestConfiguration) {
+    try {
+      configurationPromise = dependencies.getRequestConfiguration().then(
+        (configuration) => ({ configuration }),
+        () => ({ failed: true }),
+      );
+    } catch {
+      configurationPromise = Promise.resolve({ failed: true });
+    }
+  }
+
   const route = await dependencies.detectLanguage(text);
   if (controller.signal.aborted) {
     return;
@@ -115,8 +128,10 @@ async function runTranslation(
   let configuration: RequestConfiguration | null = null;
   let apiKey: string;
   try {
-    if (dependencies.getRequestConfiguration) {
-      configuration = await dependencies.getRequestConfiguration();
+    if (configurationPromise) {
+      const result = await configurationPromise;
+      if ('failed' in result) throw new Error('Configuration unavailable');
+      configuration = result.configuration;
       apiKey = configuration?.apiKey ?? '';
     } else {
       apiKey = (await dependencies.getApiKey?.())?.trim() ?? '';
