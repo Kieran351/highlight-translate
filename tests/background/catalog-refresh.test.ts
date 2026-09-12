@@ -113,3 +113,16 @@ describe('safe complete catalog refresh', () => {
     expect(await manager.requestConfiguration()).toMatchObject({ modelId: 'old-model' });
   });
 });
+
+
+it('never revives a removed model using an older manager draft over the current persisted catalog', async () => {
+  const { handle, makeManager, fetchImpl, originalToken } = await setup();
+  fetchImpl.mockResolvedValueOnce(Response.json({ data: [{ id: 'new-model' }] }));
+  await makeManager().refresh('deepseek', 'fake-key');
+  expect(await handle({ ...saveMessage, catalogToken: originalToken }, sender))
+    .toMatchObject({ ok: false, code: 'invalid_configuration' });
+  expect(await handle({ ...saveMessage, type: 'test-connection', catalogToken: originalToken }, sender))
+    .toMatchObject({ ok: false, code: 'invalid_configuration' });
+  expect((await makeManager().read()).configurations.deepseek?.models).toEqual([{ id: 'new-model' }]);
+  expect(fetchImpl).toHaveBeenCalledTimes(2);
+});

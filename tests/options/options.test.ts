@@ -23,12 +23,16 @@ async function setup(legacy = '', initialSettings?: SettingsSnapshot) {
     : Response.json({ data: [{ id: 'future-model' }, { id: '<img src=x onerror=alert(1)>' }] }));
   const manager = new ConfigurationManager({ store, resolveProvider: () => new DeepSeekProvider(fetchImpl) });
   const sender = { id: 'extension-id', url: 'chrome-extension://extension-id/options.html' };
-  const handle = createSettingsMessageHandler({ extensionId: sender.id, extensionUrl: 'chrome-extension://extension-id/', manager });
+  let handle = createSettingsMessageHandler({ extensionId: sender.id, extensionUrl: 'chrome-extension://extension-id/', manager });
   vi.stubGlobal('chrome', { runtime: { sendMessage: (message: unknown) => handle(message, sender) } });
   document.documentElement.innerHTML = optionsHtml;
   await import('../../src/options/options');
   await vi.waitFor(() => expect(document.querySelector('#active-provider')?.textContent).toBeTruthy());
-  return { store, fetchImpl, manager, storage };
+  const restart = () => {
+    handle = createSettingsMessageHandler({ extensionId: sender.id, extensionUrl: 'chrome-extension://extension-id/',
+      manager: new ConfigurationManager({ store: new ConfigurationStore(storage), resolveProvider: () => new DeepSeekProvider(fetchImpl) }) });
+  };
+  return { store, fetchImpl, manager, storage, restart };
 }
 function input<T extends HTMLElement>(id: string): T { return document.querySelector<T>(`#${id}`)!; }
 function changeKey(value: string): void {
@@ -160,4 +164,81 @@ it('does not overwrite edits made while a configuration save is waiting for stor
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(input<HTMLInputElement>('api-key').value).toBe('newer-draft-key');
   expect(input('settings-status').textContent).not.toContain('配置已保存');
+});
+
+
+it.each(['save', 'test'])('recovers an unsaved catalog after worker restart on explicit %s', async (action) => {
+  const { store, fetchImpl, restart } = await setup();
+  changeKey('synthetic-key');
+  await vi.waitFor(() => expect(input<HTMLSelectElement>('model').options.length).toBe(3));
+  selectModel('future-model');
+  restart();
+  if (action === 'save') submit(); else input<HTMLButtonElement>('test-key').click();
+  await vi.waitFor(() => expect(input('settings-status').textContent).toContain(action === 'save' ? '配置已保存' : '测试翻译成功'));
+  expect(fetchImpl).toHaveBeenCalledTimes(action === 'save' ? 2 : 3);
+  expect((await store.read()).activeProviderId).toBe(action === 'save' ? 'deepseek' : null);
+});
+
+it('preserves a removed model during recovery without saving or testing it', async () => {
+  const { store, fetchImpl, restart } = await setup();
+  changeKey('synthetic-key');
+  await vi.waitFor(() => expect(input<HTMLSelectElement>('model').options.length).toBe(3));
+  selectModel('future-model');
+  restart();
+  fetchImpl.mockResolvedValueOnce(Response.json({ data: [{ id: 'replacement-model' }] }));
+  input<HTMLButtonElement>('test-key').click();
+  await vi.waitFor(() => expect(input('model-status').textContent).toContain('请重新选择'));
+  expect(input<HTMLSelectElement>('model').value).toBe('future-model');
+  expect(fetchImpl).toHaveBeenCalledTimes(2);
+  expect((await store.read()).activeProviderId).toBeNull();
+});
+
+it.each(['key', 'provider'])('abandons recovery after the user edits %s', async (edit) => {
+  const { store, fetchImpl, restart } = await setup();
+  changeKey('synthetic-key');
+  await vi.waitFor(() => expect(input<HTMLSelectElement>('model').options.length).toBe(3));
+  selectModel('future-model');
+  restart();
+  let release!: (response: Response) => void;
+  fetchImpl.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+  submit();
+  await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+  if (edit === 'key') changeKey('new-synthetic-key');
+  else {
+    input<HTMLSelectElement>('provider').value = 'minimax';
+    input('provider').dispatchEvent(new Event('change'));
+  }
+  release(Response.json({ data: [{ id: 'future-model' }] }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect((await store.read()).activeProviderId).toBeNull();
+  expect(input('settings-status').textContent).not.toContain('配置已保存');
+});
+
+
+it('does not retry a provider test failure after catalog recovery', async () => {
+  const { store, fetchImpl, restart } = await setup();
+  changeKey('synthetic-key');
+  await vi.waitFor(() => expect(input<HTMLSelectElement>('model').options.length).toBe(3));
+  selectModel('future-model');
+  restart();
+  fetchImpl.mockResolvedValueOnce(Response.json({ data: [{ id: 'future-model' }] }));
+  fetchImpl.mockRejectedValueOnce(new TypeError('network'));
+  input<HTMLButtonElement>('test-key').click();
+  await vi.waitFor(() => expect(input('settings-status').dataset.tone).toBe('error'));
+  expect(fetchImpl).toHaveBeenCalledTimes(3);
+  expect((await store.read()).activeProviderId).toBeNull();
+});
+
+it('saves and tests the saved configuration after worker restart without reloading the page', async () => {
+  const { fetchImpl, restart } = await setup('legacy-fake-key');
+  await vi.waitFor(() => expect(input<HTMLSelectElement>('model').options.length).toBe(3));
+  selectModel('future-model');
+  submit();
+  await vi.waitFor(() => expect(input('settings-status').textContent).toContain('配置已保存'));
+  restart();
+  input<HTMLButtonElement>('test-key').click();
+  await vi.waitFor(() => expect(input('settings-status').textContent).toContain('测试翻译成功'));
+  submit();
+  await vi.waitFor(() => expect(input('settings-status').textContent).toContain('配置已保存'));
+  expect(fetchImpl).toHaveBeenCalledTimes(2);
 });

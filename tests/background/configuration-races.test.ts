@@ -78,7 +78,7 @@ describe('configuration ordering through public messages', () => {
     expect((await manager.read()).configurations.deepseek).toMatchObject({ selectedModelId: 'model-a', models: [{ id: 'model-b' }], selectionMissing: true });
   });
 
-  it('keeps only the latest successful credential proof for each supplier', async () => {
+  it('keeps persisted catalogs authoritative while replacing unsaved credential proofs', async () => {
     const { refresh, save, fetchImpl, manager } = setup();
     const original = success(await refresh());
     success(await save(original.catalogToken));
@@ -88,10 +88,10 @@ describe('configuration ordering through public messages', () => {
     const current = success(await refresh());
     delayed.resolve(Response.json({ object: 'list', data: [{ id: 'stale' }] }));
     expect(await older).toMatchObject({ ok: false });
-    expect(await save(original.catalogToken)).toMatchObject({ ok: false });
+    success(await save(original.catalogToken));
     success(await save(current.catalogToken));
     const newKey = success(await refresh('new-key'));
-    expect(await save(current.catalogToken)).toMatchObject({ ok: false });
+    success(await save(current.catalogToken));
     success(await save(newKey.catalogToken, 'new-key'));
     expect(await manager.requestConfiguration()).toMatchObject({ apiKey: 'new-key' });
   });

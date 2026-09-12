@@ -8,6 +8,7 @@ export type AppErrorCode =
   | 'too_long'
   | 'missing_key'
   | 'invalid_configuration'
+  | 'catalog_expired'
   | 'invalid_models'
   | 'unsupported_provider'
   | 'provider_unverified'

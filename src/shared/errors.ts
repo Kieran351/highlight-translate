@@ -4,6 +4,7 @@ const ERROR_PRESENTATIONS: Record<AppErrorCode, ErrorPresentation> = {
   invalid_request: { message: '翻译请求无效，请重新选择文本。', retryable: false },
   too_long: { message: '内容过长，请将选区缩短到 5,000 个字符以内。', retryable: false },
   invalid_configuration: { message: '请前往设置获取模型列表并选择有效模型。', retryable: false, showSettings: true },
+  catalog_expired: { message: '模型列表验证已过期，请重新获取后再试。', retryable: false },
   invalid_models: { message: '模型列表响应无效，请重新获取。', retryable: true },
   provider_unverified: { message: '该供应商的模型列表接口尚待核实。', retryable: false, showSettings: true },
   unsupported_provider: { message: '暂不支持该供应商。', retryable: false, showSettings: true },

@@ -77,12 +77,27 @@ describe('dynamic provider configuration through messages', () => {
     const { handle, makeHandler, makeManager, fetchImpl } = setup();
     const catalog = success(await handle({ type: 'refresh-models', providerId: 'deepseek', apiKey: 'fake-key' }, sender));
     const save = { type: 'save-settings', providerId: 'deepseek', apiKey: 'fake-key', modelId: 'future-text-model', catalogToken: catalog.catalogToken };
-    for (const message of [{ ...save, modelId: 'manual-model' }, { ...save, apiKey: 'other-key' }, { ...save, providerId: 'openai' }]) {
+    for (const message of [{ ...save, modelId: 'manual-model' }]) {
       expect(await handle(message, sender)).toMatchObject({ ok: false, code: 'invalid_configuration' });
     }
-    expect(await makeHandler(makeManager())(save, sender)).toMatchObject({ ok: false });
+    expect(await makeHandler(makeManager())(save, sender)).toMatchObject({ ok: false, code: 'catalog_expired' });
+    for (const message of [{ ...save, apiKey: 'other-key' }, { ...save, providerId: 'openai' }]) {
+      expect(await handle(message, sender)).toMatchObject({ ok: false, code: 'catalog_expired' });
+    }
     expect(await handle(save, { ...sender, url: 'https://example.com' })).toBeUndefined();
     expect(await handle({ ...save, baseUrl: 'https://evil.test' }, sender)).toBeUndefined();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
+});
+
+
+it('uses the complete saved catalog despite a token from before worker restart', async () => {
+  const { handle, makeHandler, makeManager, fetchImpl } = setup();
+  const catalog = success(await handle({ type: 'refresh-models', providerId: 'deepseek', apiKey: 'fake-key' }, sender));
+  const message = { type: 'save-settings', providerId: 'deepseek', apiKey: 'fake-key', modelId: 'future-text-model', catalogToken: catalog.catalogToken };
+  success(await handle(message, sender));
+  const restarted = makeHandler(makeManager());
+  success(await restarted(message, sender));
+  success(await restarted({ ...message, type: 'test-connection' }, sender));
+  expect(fetchImpl).toHaveBeenCalledTimes(2);
 });

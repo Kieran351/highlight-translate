@@ -74,8 +74,10 @@ export class ConfigurationManager {
   private catalog(settings: SettingsSnapshot, providerId: ProviderId, apiKey: string, modelId: string, catalogToken?: string): ProviderModel[] {
     const draft = this.drafts.get(providerId);
     const saved = settings.configurations[providerId];
-    const models = catalogToken && draft?.token === catalogToken && draft.apiKey === apiKey ? draft.models
-      : !catalogToken && saved?.apiKey === apiKey && saved.catalogStatus === 'ready' ? saved.models : undefined;
+    // The complete persisted catalog supersedes all older in-memory proofs.
+    const models = saved?.apiKey === apiKey && saved.catalogStatus === 'ready' ? saved.models
+      : catalogToken && draft?.token === catalogToken && draft.apiKey === apiKey ? draft.models : undefined;
+    if (!models) throw new ProviderFailure('catalog_expired');
     if (!models?.some((model) => model.id === modelId && model.supportsText !== false)) {
       throw new ProviderFailure('invalid_configuration');
     }

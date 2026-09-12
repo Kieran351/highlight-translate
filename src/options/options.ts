@@ -114,8 +114,42 @@ function render(): void {
 }
 async function send(message: SettingsMessage): Promise<Extract<SettingsResponse, { ok: true }>> {
   const response = await chrome.runtime.sendMessage<SettingsMessage, SettingsResponse>(message);
-  if (!response?.ok) throw new Error(response?.message ?? UI_TEXT.connectionFailed);
+  if (!response?.ok) throw Object.assign(new Error(response?.message ?? UI_TEXT.connectionFailed), { code: response?.code });
   return response;
+}
+async function perform(type: 'save-settings' | 'test-connection'): Promise<Extract<SettingsResponse, { ok: true }> | undefined> {
+  const value = draft();
+  const edited = revision;
+  const selectedProvider = providerId;
+  const apiKey = value.apiKey.trim();
+  const modelId = value.modelId;
+  const message = () => ({ type, providerId: selectedProvider, apiKey, modelId,
+    ...(value.catalogToken ? { catalogToken: value.catalogToken } : {}) });
+  try {
+    return await send(message());
+  } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'catalog_expired') throw error;
+    if (edited !== revision) return;
+    const request = ++refreshRevision;
+    loading = true;
+    renderModels();
+    try {
+      const response = await send({ type: 'refresh-models', providerId: selectedProvider, apiKey });
+      if (edited !== revision || request !== refreshRevision) return;
+      if (!response.models || !response.catalogToken) throw new Error('模型列表响应无效，请重试。', { cause: error });
+      value.models = response.models;
+      value.receivedCount = response.catalogSummary?.receivedCount;
+      value.ready = true;
+      value.catalogToken = response.catalogToken;
+      if (!value.models.some((model) => model.id === modelId && model.supportsText !== false)) {
+        throw new Error('模型已不在最新列表中，请重新选择并保存。', { cause: error });
+      }
+      // Only recover the validation precondition once; provider failures are never retried.
+      return await send(message());
+    } finally {
+      if (edited === revision && request === refreshRevision) { loading = false; renderModels(); }
+    }
+  }
 }
 function invalidate(): void {
   revision += 1;
@@ -187,9 +221,11 @@ form.addEventListener('submit', (event) => {
   const value = draft();
   const edited = revision;
   const mutation = ++mutationRevision;
-  void send({ type: 'save-settings', providerId, apiKey: value.apiKey.trim(), modelId: value.modelId, catalogToken: value.catalogToken }).then((response) => {
+  void perform('save-settings').then((response) => {
+    if (!response) return;
     if (response.settings && mutation === mutationRevision) settings = response.settings;
     if (edited !== revision) return;
+    delete value.catalogToken;
     render();
     setStatus('配置已保存并启用，将用于后续翻译。', 'success');
   }).catch((error: unknown) => { if (edited === revision) setStatus(error instanceof Error ? error.message : UI_TEXT.keySaveFailed, 'error'); });
@@ -209,13 +245,12 @@ clearButton.addEventListener('click', () => {
 });
 testButton.addEventListener('click', () => {
   if (!validSelection()) return;
-  const value = draft();
   const edited = revision;
   testing = true;
   updateButtons();
   setStatus('正在测试翻译…');
-  void send({ type: 'test-connection', providerId, apiKey: value.apiKey.trim(), modelId: value.modelId, catalogToken: value.catalogToken }).then(() => {
-    if (edited === revision) setStatus('测试翻译成功。配置仍需点击保存并启用。', 'success');
+  void perform('test-connection').then((response) => {
+    if (response && edited === revision) setStatus('测试翻译成功。配置仍需点击保存并启用。', 'success');
   }).catch((error: unknown) => { if (edited === revision) setStatus(error instanceof Error ? error.message : UI_TEXT.connectionFailed, 'error'); })
     .finally(() => { if (edited === revision) { testing = false; updateButtons(); } });
 });

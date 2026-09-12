@@ -2,7 +2,7 @@ import type { AppErrorCode, ProviderModel } from '../shared/types';
 
 export type ProviderErrorCode = Extract<
   AppErrorCode,
-  'authentication' | 'rate_limit' | 'quota' | 'server' | 'network' | 'empty_response' | 'invalid_stream' | 'invalid_models' | 'unsupported_provider' | 'provider_unverified' | 'invalid_configuration' | 'timeout_models' | 'timeout_test'
+  'authentication' | 'rate_limit' | 'quota' | 'server' | 'network' | 'empty_response' | 'invalid_stream' | 'invalid_models' | 'unsupported_provider' | 'provider_unverified' | 'invalid_configuration' | 'catalog_expired' | 'timeout_models' | 'timeout_test'
 >;
 
 export class ProviderFailure extends Error {
