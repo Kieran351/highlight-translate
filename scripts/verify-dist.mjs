@@ -35,7 +35,7 @@ assert(Array.isArray(manifest.content_scripts) && manifest.content_scripts.lengt
 assert(manifest.content_scripts[0]?.all_frames === false, 'Content Script must not run in iframes.');
 assert(!('default_popup' in (manifest.action ?? {})), 'Toolbar popup is outside MVP scope.');
 assert(
-  JSON.stringify(manifest.host_permissions) === JSON.stringify(['https://api.deepseek.com/*', 'https://api.minimax.cn/*']),
+  JSON.stringify(manifest.host_permissions) === JSON.stringify(['https://api.deepseek.com/*', 'https://api.minimax.cn/*', 'https://api.moonshot.cn/*']),
   'Only verified official provider host permissions are allowed.',
 );
 

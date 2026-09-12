@@ -1,6 +1,7 @@
 import type { ProviderId } from '../shared/types';
 import { DeepSeekProvider } from './deepseek-provider';
 import { MiniMaxProvider } from './minimax-provider';
+import { KimiProvider } from './kimi-provider';
 import { ProviderFailure } from './provider';
 import type { CatalogProvider } from './provider';
 
@@ -11,6 +12,7 @@ export function createProviderRegistry(fetchImpl: FetchLike = defaultFetch): (id
   const providers: Partial<Record<ProviderId, CatalogProvider>> = {
     deepseek: new DeepSeekProvider(fetchImpl),
     minimax: new MiniMaxProvider(fetchImpl),
+    kimi: new KimiProvider(fetchImpl),
   };
   return (id) => {
     const provider = providers[id];
