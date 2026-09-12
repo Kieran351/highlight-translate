@@ -1,4 +1,4 @@
-import type { AppErrorCode } from './types';
+import type { AppErrorCode, ProviderId, ProviderModel, SettingsSnapshot } from './types';
 
 export type ClientPortMessage =
   | { type: 'translate'; requestId: string; text: string }
@@ -19,10 +19,19 @@ export type ServerPortMessage =
     }
   | { type: 'cancelled'; requestId: string };
 
-export type ExtensionMessage =
-  | { type: 'open-options' }
-  | { type: 'test-connection'; apiKey: string };
+export type SettingsMessage =
+  | { type: 'get-settings' }
+  | { type: 'refresh-models'; providerId: ProviderId; apiKey: string }
+  | { type: 'save-settings'; providerId: ProviderId; apiKey: string; modelId: string; catalogToken?: string }
+  | { type: 'clear-settings'; providerId: ProviderId }
+  | { type: 'test-connection'; providerId: ProviderId; apiKey: string; modelId: string; catalogToken?: string };
+
+export type ExtensionMessage = { type: 'open-options' } | SettingsMessage;
 
 export type ExtensionResponse =
   | { ok: true }
-  | { ok: false; message: string };
+  | { ok: false; message: string; code?: AppErrorCode };
+
+export type SettingsResponse =
+  | { ok: true; settings?: SettingsSnapshot; models?: ProviderModel[]; catalogToken?: string; catalogSummary?: { receivedCount: number; selectableCount: number } }
+  | { ok: false; message: string; code?: AppErrorCode };
