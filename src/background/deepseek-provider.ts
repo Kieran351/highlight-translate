@@ -3,55 +3,26 @@ import { TRANSLATION_SYSTEM_PROMPT } from '../shared/prompt';
 import { ProviderFailure } from './provider';
 import type { StreamTranslationInput, CatalogProvider, ListModelsInput } from './provider';
 
-type FetchLike = typeof fetch;
-
-const defaultFetch: FetchLike = (input, init) => globalThis.fetch(input, init);
+import { defaultFetch, isRecord, parseStreamJson, providerFetch, readModelJson, streamError } from './provider-http';
+import type { FetchLike } from './provider-http';
 
 export const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 export const DEEPSEEK_MODEL = 'deepseek-v4-flash';
 
-interface DeepSeekDelta {
-  content?: unknown;
-  reasoning_content?: unknown;
-}
-
-interface DeepSeekEvent {
-  choices?: Array<{ delta?: DeepSeekDelta }>;
-}
-
-function errorForStatus(status: number): ProviderFailure {
-  if (status === 401 || status === 403) {
-    return new ProviderFailure('authentication');
-  }
-  if (status === 402) {
-    return new ProviderFailure('quota');
-  }
-  if (status === 429) {
-    return new ProviderFailure('rate_limit');
-  }
-  if (status >= 500) {
-    return new ProviderFailure('server');
-  }
-  return new ProviderFailure('server');
-}
-
 function parseDataPayload(payload: string, onChunk: (text: string) => void): boolean {
-  if (payload === '[DONE]') {
-    return true;
-  }
-
-  let event: DeepSeekEvent;
-  try {
-    event = JSON.parse(payload) as DeepSeekEvent;
-  } catch {
-    throw new ProviderFailure('invalid_stream');
-  }
-
-  const content = event.choices?.[0]?.delta?.content;
-  if (typeof content === 'string' && content.length > 0) {
-    onChunk(content);
-  }
-
+  if (payload === '[DONE]') return true;
+  const event = parseStreamJson(payload);
+  if (event.error) throw streamError(event.error);
+  if (!Array.isArray(event.choices)) throw new ProviderFailure('invalid_stream');
+  if (event.choices.length === 0) return false;
+  const choice: unknown = event.choices[0];
+  if (!isRecord(choice) || !isRecord(choice.delta)) throw new ProviderFailure('invalid_stream');
+  const content = choice.delta.content;
+  if (content != null && typeof content !== 'string') throw new ProviderFailure('invalid_stream');
+  if (typeof content === 'string' && content) onChunk(content);
+  // Preserve compatibility with legacy streams without finish_reason, but never
+  // turn an explicit truncation, tool call or service interruption into success.
+  if (choice.finish_reason != null && choice.finish_reason !== 'stop') throw new ProviderFailure('invalid_stream');
   return false;
 }
 
@@ -68,14 +39,19 @@ function processEventBlock(block: string, onChunk: (text: string) => void): bool
 export async function parseDeepSeekSse(
   body: ReadableStream<Uint8Array>,
   onChunk: (text: string) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  const cancel = (): void => { void reader.cancel().catch(() => undefined); };
+  signal?.addEventListener('abort', cancel, { once: true });
 
   try {
     while (true) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       const { value, done } = await reader.read();
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       buffer = (buffer + decoder.decode(value, { stream: !done })).replaceAll('\r\n', '\n');
 
       let boundary = buffer.indexOf('\n\n');
@@ -98,6 +74,8 @@ export async function parseDeepSeekSse(
       }
     }
   } finally {
+    signal?.removeEventListener('abort', cancel);
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }
@@ -119,76 +97,39 @@ export class DeepSeekProvider implements CatalogProvider {
   constructor(private readonly fetchImpl: FetchLike = defaultFetch) {}
 
   async listModels({ apiKey, signal }: ListModelsInput): Promise<ProviderModel[]> {
-    let response: Response;
-    try {
-      response = await this.fetchImpl('https://api.deepseek.com/models', {
-        headers: { Authorization: `Bearer ${apiKey}` }, signal,
-      });
-    } catch {
-      throw new ProviderFailure('network');
-    }
-    if (!response.ok) throw errorForStatus(response.status);
-    try {
-      const body: unknown = await response.json();
-      if (typeof body !== 'object' || body === null || !('data' in body) || !Array.isArray(body.data)) {
-        throw new ProviderFailure('invalid_models');
-      }
-      return body.data.map((model: unknown) => {
-        if (typeof model !== 'object' || model === null || !('id' in model)
-          || typeof model.id !== 'string' || !model.id.trim()) throw new ProviderFailure('invalid_models');
-        return { id: model.id };
-      });
-    } catch {
-      throw new ProviderFailure('invalid_models');
-    }
+    const response = await providerFetch(this.fetchImpl, 'https://api.deepseek.com/models', {
+      headers: { Authorization: `Bearer ${apiKey}` }, signal,
+    });
+    const body = await readModelJson(response);
+    if (!Array.isArray(body.data) || (body.has_more !== undefined && body.has_more !== false)
+      || body.next != null || body.next_page != null || body.next_cursor != null) throw new ProviderFailure('invalid_models');
+    return body.data.map((model: unknown) => {
+      if (!isRecord(model) || typeof model.id !== 'string' || !model.id.trim()) throw new ProviderFailure('invalid_models');
+      return { id: model.id };
+    });
   }
 
   async stream({ apiKey, modelId, text, signal, onChunk }: StreamTranslationInput): Promise<void> {
-    let response: Response;
-    try {
-      response = await this.fetchImpl(DEEPSEEK_API_URL, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: requestBody(text, true, modelId),
-        signal,
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw error;
-      }
-      throw new ProviderFailure('network');
-    }
-
-    if (!response.ok) {
-      throw errorForStatus(response.status);
-    }
-    if (!response.body) {
-      throw new ProviderFailure('invalid_stream');
-    }
-
-    await parseDeepSeekSse(response.body, onChunk);
+    const response = await providerFetch(this.fetchImpl, DEEPSEEK_API_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: requestBody(text, true, modelId),
+      signal,
+    });
+    if (!response.body) throw new ProviderFailure('invalid_stream');
+    await parseDeepSeekSse(response.body, onChunk, signal);
   }
 
   async testConnection(apiKey: string, modelId?: string): Promise<void> {
-    let response: Response;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
     try {
-      response = await this.fetchImpl(DEEPSEEK_API_URL, {
+      await providerFetch(this.fetchImpl, DEEPSEEK_API_URL, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey.trim()}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { Authorization: `Bearer ${apiKey.trim()}`, 'Content-Type': 'application/json' },
         body: requestBody('你好', false, modelId),
+        signal: controller.signal,
       });
-    } catch {
-      throw new ProviderFailure('network');
-    }
-
-    if (!response.ok) {
-      throw errorForStatus(response.status);
-    }
+    } finally { clearTimeout(timer); }
   }
 }
