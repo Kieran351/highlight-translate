@@ -170,7 +170,7 @@ function editKey(): void {
   value.apiKey = keyInput.value;
   if (!sameKey) { value.models = []; value.modelId = ''; value.ready = false; delete value.catalogToken; }
   renderModels();
-  if (!sameKey && value.apiKey.trim()) timer = setTimeout(() => { void refresh(); }, 500);
+  if (!value.ready && value.apiKey.trim()) timer = setTimeout(() => { void refresh(); }, 500);
 }
 keyInput.addEventListener('input', editKey);
 keyInput.addEventListener('change', () => { editKey(); if (!draft().ready) void refresh(); });

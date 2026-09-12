@@ -72,6 +72,17 @@ it('fetches changed credentials without manual refresh and ignores a late old-ke
   expect(input('model').textContent).not.toContain('stale-model');
 });
 
+it('still automatically fetches when trailing whitespace is entered before the debounce completes', async () => {
+  const { fetchImpl } = await setup();
+  input<HTMLInputElement>('api-key').value = 'synthetic-key';
+  input('api-key').dispatchEvent(new Event('input'));
+  input<HTMLInputElement>('api-key').value = 'synthetic-key ';
+  input('api-key').dispatchEvent(new Event('input'));
+  await vi.waitFor(() => expect(input<HTMLSelectElement>('model').options.length).toBe(3));
+  expect(fetchImpl).toHaveBeenCalledTimes(1);
+  expect(input<HTMLInputElement>('api-key').value).toBe('synthetic-key ');
+});
+
 it('preserves the selection after refresh failure and asks for repair when the model disappears', async () => {
   const { fetchImpl } = await setup('legacy-fake-key');
   await vi.waitFor(() => expect(input<HTMLSelectElement>('model').options.length).toBe(3));
