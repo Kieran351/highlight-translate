@@ -81,8 +81,12 @@ describe('optional translation through settings messages', () => {
 
   it('rejects credentials or models without matching catalog proof before fetching', async () => {
     const { handle, fetchImpl, configuration } = await setup();
-    for (const change of [{ apiKey: 'other-key' }, { modelId: 'manual-model' }, { providerId: 'openai' }]) {
-      expect(await handle({ type: 'test-connection', ...configuration, ...change }, sender)).toMatchObject({ ok: false, code: 'invalid_configuration' });
+    for (const { change, code } of [
+      { change: { apiKey: 'other-key' }, code: 'catalog_expired' },
+      { change: { modelId: 'manual-model' }, code: 'invalid_configuration' },
+      { change: { providerId: 'openai' }, code: 'catalog_expired' },
+    ]) {
+      expect(await handle({ type: 'test-connection', ...configuration, ...change }, sender)).toMatchObject({ ok: false, code });
     }
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
