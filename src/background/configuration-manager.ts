@@ -113,7 +113,26 @@ export class ConfigurationManager {
       this.catalog(snapshot, providerId, apiKey, modelId, catalogToken);
       return false;
     });
-    await this.dependencies.resolveProvider(providerId).testConnection(apiKey, modelId);
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let hasText = false;
+    try {
+      await Promise.race([
+        this.dependencies.resolveProvider(providerId).stream({
+          apiKey, modelId, text: 'Hello, world!', signal: controller.signal,
+          onChunk: (text) => { if (text.trim()) hasText = true; },
+        }),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            reject(new ProviderFailure('timeout_test'));
+            controller.abort();
+          }, 20_000);
+        }),
+      ]);
+      if (!hasText) throw new ProviderFailure('empty_response');
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   async requestConfiguration(): Promise<RequestConfiguration | null> {

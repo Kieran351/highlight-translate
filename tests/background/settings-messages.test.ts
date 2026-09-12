@@ -34,12 +34,12 @@ describe('trusted settings messages', () => {
     const { handle, fetchImpl } = setup();
     const catalog = await handle({ type: 'refresh-models', providerId: 'deepseek', apiKey: 'fake-key' }, sender);
     if (!catalog?.ok) throw new Error('Expected catalog');
-    fetchImpl.mockResolvedValueOnce(new Response('{}'));
+    fetchImpl.mockResolvedValueOnce(new Response('data: {"choices":[{"delta":{"content":"你好"}}]}\n\ndata: [DONE]\n\n'));
     expect(await handle({ type: 'test-connection', providerId: 'deepseek', apiKey: 'fake-key', modelId: 'api-model', catalogToken: catalog.catalogToken }, sender)).toEqual({ ok: true });
     const [url, request] = fetchImpl.mock.calls[1]!;
     expect(url).toBe('https://api.deepseek.com/chat/completions');
     expect(request?.headers).toMatchObject({ Authorization: 'Bearer fake-key' });
-    expect(JSON.parse(request?.body as string)).toMatchObject({ model: 'api-model', messages: expect.arrayContaining([{ role: 'user', content: '你好' }]) });
+    expect(JSON.parse(request?.body as string)).toMatchObject({ model: 'api-model', messages: expect.arrayContaining([{ role: 'user', content: 'Hello, world!' }]) });
     expect(await handle({ type: 'get-settings' }, sender)).toMatchObject({ ok: true, settings: { activeProviderId: null } });
   });
 

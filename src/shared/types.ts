@@ -18,6 +18,7 @@ export type AppErrorCode =
   | 'network'
   | 'empty_response'
   | 'invalid_stream'
+  | 'timeout_test'
   | 'timeout_models'
   | 'timeout_first'
   | 'timeout_idle'
