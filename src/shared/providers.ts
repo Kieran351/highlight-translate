@@ -14,5 +14,5 @@ export const PROVIDERS: readonly ProviderMetadata[] = [
   { id: 'glm', label: 'GLM / 智谱', platformLabel: '中国大陆官方 API · 模型列表接口待核实', availability: 'pending', website: 'https://bigmodel.cn/' },
   { id: 'kimi', label: 'Kimi / 月之暗面', platformLabel: '中国大陆官方 API', availability: 'available', website: 'https://platform.kimi.com/' },
   { id: 'openai', label: 'OpenAI', platformLabel: '官方 API', availability: 'available', website: 'https://platform.openai.com/' },
-  { id: 'anthropic', label: 'Anthropic', platformLabel: '官方 API', availability: 'pending', website: 'https://platform.claude.com/' },
+  { id: 'anthropic', label: 'Anthropic', platformLabel: '官方 API', availability: 'available', website: 'https://platform.claude.com/' },
 ];
