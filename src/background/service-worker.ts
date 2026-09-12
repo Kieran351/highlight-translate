@@ -1,5 +1,7 @@
-import { ApiKeyStore } from './api-key-store';
-import { DeepSeekProvider } from './deepseek-provider';
+import { ConfigurationStore } from './configuration-store';
+import { ConfigurationManager } from './configuration-manager';
+import { resolveProvider } from './provider-registry';
+import { ProviderFailure } from './provider';
 import { createLanguageRouter } from './language-router';
 import { createSettingsMessageHandler } from './settings-handler';
 import { createTranslationSession } from './translation-session';
@@ -7,11 +9,21 @@ import type { PortLike } from './translation-session';
 import type { ExtensionMessage, ExtensionResponse } from '../shared/messages';
 import { PORT_NAME } from '../shared/constants';
 
-const apiKeyStore = new ApiKeyStore(chrome.storage.local);
-const provider = new DeepSeekProvider();
+const storageReady = chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })
+  .then(() => true, () => false);
+async function requireTrustedStorage(): Promise<void> {
+  if (!await storageReady) throw new Error('Trusted storage unavailable');
+}
+const manager = new ConfigurationManager({
+  store: new ConfigurationStore({
+    get: async (key) => { await requireTrustedStorage(); return chrome.storage.local.get(key); },
+    set: async (items) => { await requireTrustedStorage(); await chrome.storage.local.set(items); },
+    remove: async (key) => { await requireTrustedStorage(); await chrome.storage.local.remove(key); },
+  }),
+  resolveProvider,
+});
 const detectLanguage = createLanguageRouter((text) => chrome.i18n.detectLanguage(text));
 
-void chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
@@ -45,8 +57,11 @@ chrome.runtime.onConnect.addListener((port) => {
 
   createTranslationSession(port as unknown as PortLike, {
     detectLanguage,
-    getApiKey: () => apiKeyStore.get(),
-    streamTranslation: (input) => provider.stream(input),
+    getRequestConfiguration: () => manager.requestConfiguration(),
+    streamTranslation: (input) => {
+      if (!input.providerId) throw new ProviderFailure('invalid_configuration');
+      return resolveProvider(input.providerId).stream(input);
+    },
   });
 });
 
@@ -66,8 +81,7 @@ function isContentPageSender(sender: chrome.runtime.MessageSender): boolean {
 const handleSettingsMessage = createSettingsMessageHandler({
   extensionId: chrome.runtime.id,
   extensionUrl: chrome.runtime.getURL(''),
-  store: apiKeyStore,
-  provider,
+  manager,
 });
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {

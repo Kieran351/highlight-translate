@@ -1,6 +1,7 @@
+import type { ProviderModel } from '../shared/types';
 import { TRANSLATION_SYSTEM_PROMPT } from '../shared/prompt';
 import { ProviderFailure } from './provider';
-import type { StreamTranslationInput, TranslationProvider } from './provider';
+import type { StreamTranslationInput, CatalogProvider, ListModelsInput } from './provider';
 
 type FetchLike = typeof fetch;
 
@@ -101,9 +102,9 @@ export async function parseDeepSeekSse(
   }
 }
 
-function requestBody(text: string, stream: boolean): string {
+function requestBody(text: string, stream: boolean, modelId = DEEPSEEK_MODEL): string {
   return JSON.stringify({
-    model: DEEPSEEK_MODEL,
+    model: modelId,
     messages: [
       { role: 'system', content: TRANSLATION_SYSTEM_PROMPT },
       { role: 'user', content: text },
@@ -114,10 +115,35 @@ function requestBody(text: string, stream: boolean): string {
   });
 }
 
-export class DeepSeekProvider implements TranslationProvider {
+export class DeepSeekProvider implements CatalogProvider {
   constructor(private readonly fetchImpl: FetchLike = defaultFetch) {}
 
-  async stream({ apiKey, text, signal, onChunk }: StreamTranslationInput): Promise<void> {
+  async listModels({ apiKey, signal }: ListModelsInput): Promise<ProviderModel[]> {
+    let response: Response;
+    try {
+      response = await this.fetchImpl('https://api.deepseek.com/models', {
+        headers: { Authorization: `Bearer ${apiKey}` }, signal,
+      });
+    } catch {
+      throw new ProviderFailure('network');
+    }
+    if (!response.ok) throw errorForStatus(response.status);
+    try {
+      const body: unknown = await response.json();
+      if (typeof body !== 'object' || body === null || !('data' in body) || !Array.isArray(body.data)) {
+        throw new ProviderFailure('invalid_models');
+      }
+      return body.data.map((model: unknown) => {
+        if (typeof model !== 'object' || model === null || !('id' in model)
+          || typeof model.id !== 'string' || !model.id.trim()) throw new ProviderFailure('invalid_models');
+        return { id: model.id };
+      });
+    } catch {
+      throw new ProviderFailure('invalid_models');
+    }
+  }
+
+  async stream({ apiKey, modelId, text, signal, onChunk }: StreamTranslationInput): Promise<void> {
     let response: Response;
     try {
       response = await this.fetchImpl(DEEPSEEK_API_URL, {
@@ -126,7 +152,7 @@ export class DeepSeekProvider implements TranslationProvider {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: requestBody(text, true),
+        body: requestBody(text, true, modelId),
         signal,
       });
     } catch (error) {
@@ -146,7 +172,7 @@ export class DeepSeekProvider implements TranslationProvider {
     await parseDeepSeekSse(response.body, onChunk);
   }
 
-  async testConnection(apiKey: string): Promise<void> {
+  async testConnection(apiKey: string, modelId?: string): Promise<void> {
     let response: Response;
     try {
       response = await this.fetchImpl(DEEPSEEK_API_URL, {
@@ -155,7 +181,7 @@ export class DeepSeekProvider implements TranslationProvider {
           Authorization: `Bearer ${apiKey.trim()}`,
           'Content-Type': 'application/json',
         },
-        body: requestBody('你好', false),
+        body: requestBody('你好', false, modelId),
       });
     } catch {
       throw new ProviderFailure('network');

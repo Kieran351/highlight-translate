@@ -7,6 +7,10 @@ export type AppErrorCode =
   | 'invalid_request'
   | 'too_long'
   | 'missing_key'
+  | 'invalid_configuration'
+  | 'invalid_models'
+  | 'unsupported_provider'
+  | 'provider_unverified'
   | 'authentication'
   | 'rate_limit'
   | 'quota'
@@ -22,4 +26,32 @@ export interface ErrorPresentation {
   message: string;
   retryable: boolean;
   showSettings?: boolean;
+}
+
+export const PROVIDER_IDS = ['deepseek', 'minimax', 'glm', 'kimi', 'openai', 'anthropic'] as const;
+export type ProviderId = typeof PROVIDER_IDS[number];
+
+export interface ProviderModel {
+  id: string;
+  name?: string;
+  supportsText?: boolean;
+}
+
+export interface ProviderConfiguration {
+  apiKey: string;
+  selectedModelId: string | null;
+  models: ProviderModel[];
+  catalogStatus: 'unfetched' | 'ready';
+  selectionMissing: boolean;
+}
+
+export interface SettingsSnapshot {
+  activeProviderId: ProviderId | null;
+  configurations: Partial<Record<ProviderId, ProviderConfiguration>>;
+}
+
+export interface RequestConfiguration {
+  providerId: ProviderId;
+  apiKey: string;
+  modelId: string;
 }

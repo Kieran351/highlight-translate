@@ -12,10 +12,14 @@
         <div>
           <p class="settings__eyebrow" data-ui-text="appName"></p>
           <h1 id="settings-title" data-ui-text="optionsHeading"></h1>
-          <p class="settings__intro" data-ui-text="optionsIntro"></p>
+          <p class="settings__intro">使用自己的官方 API Key，选择模型后即可开始翻译。</p>
         </div>
 
         <form id="settings-form" novalidate>
+          <p id="active-provider" class="settings__active"></p>
+          <label for="provider">供应商</label>
+          <select id="provider" name="provider"></select>
+          <p id="provider-note" class="settings__help"></p>
           <label for="api-key" data-ui-text="apiKeyLabel"></label>
           <div class="settings__input-row">
             <input
@@ -28,15 +32,21 @@
             />
             <button id="toggle-key" class="button button--quiet" type="button" data-ui-text="show"></button>
           </div>
+          <label for="model">翻译模型</label>
+          <div class="settings__input-row">
+            <select id="model" name="model" aria-describedby="model-status"></select>
+            <button id="refresh-models" class="button button--quiet" type="button">刷新列表</button>
+          </div>
+          <p id="model-status" class="settings__help" role="status" aria-live="polite"></p>
           <div class="settings__actions">
-            <button class="button button--primary" type="submit" data-ui-text="save"></button>
-            <button id="clear-key" class="button button--quiet" type="button" data-ui-text="clear"></button>
-            <button id="test-key" class="button button--secondary" type="button" data-ui-text="testConnection"></button>
+            <button id="save-settings" class="button button--primary" type="submit">保存并启用</button>
+            <button id="clear-key" class="button button--quiet" type="button" >清除此供应商</button>
+            <button id="test-key" class="button button--secondary" type="button" >测试翻译（可选）</button>
           </div>
         </form>
 
         <p id="settings-status" class="settings__status" role="status" aria-live="polite"></p>
-        <p class="settings__note" data-ui-text="optionsNote"></p>
+        <p class="settings__note">API Key 仅保存在本机扩展设置中。保存不要求测试成功；模型列表成功也不代表翻译调用已验证。</p>
       </section>
     </main>
     <script type="module" src="/src/options/options.ts"></script>

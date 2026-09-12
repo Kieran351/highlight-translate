@@ -177,3 +177,54 @@ input:focus {
     background: #101828;
   }
 }
+
+select {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #cfd4dc;
+  border-radius: 10px;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+}
+
+select:focus-visible,
+button:focus-visible {
+  outline: 3px solid #84adff;
+  outline-offset: 2px;
+}
+
+.settings__help {
+  min-height: 20px;
+  margin: 0 0 10px;
+  color: #667085;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.settings__active {
+  margin: 0 0 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: #175cd3;
+  background: #eff4ff;
+  font-size: 14px;
+}
+
+.settings__actions { flex-wrap: wrap; }
+.button:disabled { cursor: not-allowed; }
+
+@media (prefers-color-scheme: dark) {
+  select { color: #f2f4f7; border-color: #475467; background: #101828; }
+  .settings__help { color: #d0d5dd; }
+  .settings__active { color: #b2ccff; background: #1849a9; }
+}
+
+@media (max-width: 600px) {
+  body { min-width: 320px; }
+  .settings { padding: 20px 12px; }
+  .settings__card { padding: 24px 18px; }
+  .settings__input-row { flex-wrap: wrap; }
+}
