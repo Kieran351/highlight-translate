@@ -54,7 +54,7 @@ npm run build
 | OpenAI | [OpenAI](https://platform.openai.com/) | `api.openai.com` |
 | Anthropic | [Claude Console](https://platform.claude.com/) | `api.anthropic.com` |
 
-GLM／智谱国内站的可用模型列表接口仍待核实。设置页会解释该状态，不提供猜测接口或手动模型 ID 作为替代。
+GLM／智谱本轮暂缓接入，不出现在供应商选项中。
 
 每家供应商分别保留 Key 和已选模型。保存配置只影响后续请求，进行中的翻译继续使用原请求配置。完整刷新成功后若已选模型消失，扩展会保留原选择并要求重新选择，修复前不会发起新的远程翻译。升级时保留原 DeepSeek Key，但旧固定模型需要从新获取的 API 列表中选择。翻译目标仍是简体中文。
 

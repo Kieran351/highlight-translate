@@ -85,7 +85,7 @@ function renderModels(): void {
     modelInput.append(option);
   }
   modelInput.value = value.modelId;
-  modelStatus.textContent = loading ? '正在获取完整模型列表…' : !available() ? providerId === 'glm' ? '智谱国内站模型列表接口待核实，暂不能选择模型。' : '此供应商的接入尚未开放。'
+  modelStatus.textContent = loading ? '正在获取完整模型列表…' : !available() ? '此供应商的接入尚未开放。'
     : !value.ready ? '填写 API Key 后自动获取模型列表。'
     : value.modelId && !value.models.some((model) => model.id === value.modelId) ? '模型已不在最新列表中，请重新选择并保存。'
     : value.models.length === 0 ? value.receivedCount ? '列表中的模型均明确不支持文本翻译，暂无可选模型。' : '模型列表为空，请稍后刷新或检查账号权限。'
@@ -106,8 +106,9 @@ function render(): void {
   keyInput.type = 'password';
   toggleButton.textContent = UI_TEXT.show;
   element('#provider-note').textContent = provider.platformLabel;
+  const activeProvider = PROVIDERS.find((item) => item.id === settings.activeProviderId);
   element('#active-provider').textContent = settings.activeProviderId
-    ? `当前使用：${PROVIDERS.find((item) => item.id === settings.activeProviderId)?.label ?? settings.activeProviderId}`
+    ? activeProvider ? `当前使用：${activeProvider.label}` : '原活动供应商已暂停接入，请选择其他供应商并保存。'
     : '尚未启用远程翻译配置';
   renderModels();
 }
@@ -226,7 +227,7 @@ void send({ type: 'get-settings' }).then((response) => {
   if (initialMutation === mutationRevision) settings = response.settings;
   if (initialRevision !== revision) return;
   drafts.clear();
-  providerId = settings.activeProviderId ?? 'deepseek';
+  providerId = PROVIDERS.find((item) => item.id === settings.activeProviderId)?.id ?? 'deepseek';
   render();
   if (!draft().ready && draft().apiKey.trim()) void refresh();
 }).catch(() => { if (initialRevision === revision) setStatus(UI_TEXT.settingsReadFailed, 'error'); });

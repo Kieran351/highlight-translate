@@ -4,11 +4,12 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ConfigurationStore } from '../../src/background/configuration-store';
 import { ConfigurationManager } from '../../src/background/configuration-manager';
 import { DeepSeekProvider } from '../../src/background/deepseek-provider';
+import type { SettingsSnapshot } from '../../src/shared/types';
 import { createSettingsMessageHandler } from '../../src/background/settings-handler';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
 
-async function setup(legacy = '') {
+async function setup(legacy = '', initialSettings?: SettingsSnapshot) {
   const values: Record<string, unknown> = { deepseekApiKey: legacy };
   const storage = {
     get: async () => structuredClone(values),
@@ -16,6 +17,7 @@ async function setup(legacy = '') {
     remove: async (key: string) => { delete values[key]; },
   };
   const store = new ConfigurationStore(storage);
+  if (initialSettings) await store.update((snapshot) => { Object.assign(snapshot, initialSettings); });
   const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async (_url, init) => init?.method === 'POST'
     ? new Response('data: {"choices":[{"delta":{"content":"测试译文"}}]}\n\ndata: [DONE]\n\n')
     : Response.json({ data: [{ id: 'future-model' }, { id: '<img src=x onerror=alert(1)>' }] }));
@@ -109,13 +111,27 @@ it('keeps optional test failure independent of saving and suppresses results aft
   expect(input('settings-status').textContent).not.toContain('测试翻译成功');
 });
 
-it('shows GLM as pending verification without misreporting unsupported', async () => {
+it('offers five suppliers without the deferred GLM option', async () => {
   await setup();
-  input<HTMLSelectElement>('provider').value = 'glm';
-  input('provider').dispatchEvent(new Event('change'));
-  expect(input('provider-note').textContent).toContain('待核实');
+  expect(Array.from(input<HTMLSelectElement>('provider').options, (option) => option.value))
+    .toEqual(['deepseek', 'minimax', 'kimi', 'openai', 'anthropic']);
+  expect(document.body.textContent).not.toContain('待核实');
+  expect(input<HTMLInputElement>('api-key').placeholder).toBe('输入所选供应商的 API Key');
+});
+
+it('opens a supported supplier for a saved GLM configuration without changing the active configuration', async () => {
+  const initialSettings: SettingsSnapshot = {
+    activeProviderId: 'glm',
+    configurations: { glm: { apiKey: 'synthetic-glm-key', selectedModelId: null, models: [], catalogStatus: 'unfetched', selectionMissing: false } },
+  };
+  const { store, fetchImpl } = await setup('', initialSettings);
+  await vi.waitFor(() => expect(input('active-provider').textContent).toContain('原活动供应商已暂停接入'));
+  expect(input<HTMLSelectElement>('provider').value).toBe('deepseek');
+  expect(input<HTMLInputElement>('api-key').value).toBe('');
   expect(input<HTMLButtonElement>('save-settings').disabled).toBe(true);
-  expect(document.body.textContent).not.toContain('暂不支持该供应商');
+  expect(input('settings-status').textContent).not.toContain('读取本机设置失败');
+  expect(await store.read()).toEqual(initialSettings);
+  expect(fetchImpl).not.toHaveBeenCalled();
 });
 
 it('does not overwrite edits made while a configuration save is waiting for storage', async () => {

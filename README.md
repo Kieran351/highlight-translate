@@ -54,7 +54,7 @@ Never paste an API key into an AI chat, source file, screenshot, issue, or publi
 | OpenAI | [OpenAI](https://platform.openai.com/) | `api.openai.com` |
 | Anthropic | [Claude Console](https://platform.claude.com/) | `api.anthropic.com` |
 
-GLM / BigModel remains pending verification of a usable China-platform model-list API. The settings page explains that state; it does not offer a guessed endpoint or a manually entered model ID.
+GLM / BigModel is deferred for this release and is not offered in the provider selector.
 
 Each provider retains its own key and selected model. Saving a configuration changes subsequent requests; a running translation keeps its original configuration. If a successful complete refresh removes the selected model, the extension preserves that choice and asks you to select another before starting new remote translations. Existing DeepSeek keys are retained during upgrade, but the old fixed model must be selected from a freshly fetched catalog. The translation target remains Simplified Chinese.
 
