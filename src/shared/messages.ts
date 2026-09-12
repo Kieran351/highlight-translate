@@ -19,10 +19,16 @@ export type ServerPortMessage =
     }
   | { type: 'cancelled'; requestId: string };
 
-export type ExtensionMessage =
-  | { type: 'open-options' }
+export type SettingsMessage =
+  | { type: 'get-settings' }
+  | { type: 'save-settings'; apiKey: string }
+  | { type: 'clear-settings' }
   | { type: 'test-connection'; apiKey: string };
+
+export type ExtensionMessage = { type: 'open-options' } | SettingsMessage;
 
 export type ExtensionResponse =
   | { ok: true }
   | { ok: false; message: string };
+
+export type SettingsResponse = ExtensionResponse | { ok: true; apiKey: string };

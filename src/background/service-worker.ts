@@ -1,13 +1,11 @@
 import { ApiKeyStore } from './api-key-store';
 import { DeepSeekProvider } from './deepseek-provider';
 import { createLanguageRouter } from './language-router';
-import { ProviderFailure } from './provider';
+import { createSettingsMessageHandler } from './settings-handler';
 import { createTranslationSession } from './translation-session';
 import type { PortLike } from './translation-session';
-import { getErrorPresentation } from '../shared/errors';
 import type { ExtensionMessage, ExtensionResponse } from '../shared/messages';
 import { PORT_NAME } from '../shared/constants';
-import { UI_TEXT } from '../shared/ui-text';
 
 const apiKeyStore = new ApiKeyStore(chrome.storage.local);
 const provider = new DeepSeekProvider();
@@ -52,11 +50,6 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
-function isExtensionPageSender(sender: chrome.runtime.MessageSender): boolean {
-  return sender.id === chrome.runtime.id
-    && Boolean(sender.url?.startsWith(chrome.runtime.getURL('')));
-}
-
 function isContentPageSender(sender: chrome.runtime.MessageSender): boolean {
   if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || !sender.tab?.id) {
     return false;
@@ -69,6 +62,13 @@ function isContentPageSender(sender: chrome.runtime.MessageSender): boolean {
     return false;
   }
 }
+
+const handleSettingsMessage = createSettingsMessageHandler({
+  extensionId: chrome.runtime.id,
+  extensionUrl: chrome.runtime.getURL(''),
+  store: apiKeyStore,
+  provider,
+});
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (typeof message !== 'object' || message === null || !('type' in message)) {
@@ -85,24 +85,6 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     return false;
   }
 
-  if (typedMessage.type !== 'test-connection' || !isExtensionPageSender(sender)) {
-    return false;
-  }
-
-  if (typeof typedMessage.apiKey !== 'string' || !typedMessage.apiKey.trim()) {
-    sendResponse({ ok: false, message: UI_TEXT.enterKeyBeforeTest } satisfies ExtensionResponse);
-    return false;
-  }
-
-  void provider.testConnection(typedMessage.apiKey.trim())
-    .then(() => sendResponse({ ok: true } satisfies ExtensionResponse))
-    .catch((error: unknown) => {
-      const code = error instanceof ProviderFailure ? error.code : 'network';
-      sendResponse({
-        ok: false,
-        message: getErrorPresentation(code).message,
-      } satisfies ExtensionResponse);
-    });
-
+  void handleSettingsMessage(message, sender).then(sendResponse);
   return true;
 });

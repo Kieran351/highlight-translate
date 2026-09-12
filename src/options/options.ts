@@ -1,7 +1,6 @@
 import './options.css';
 
-import { ApiKeyStore } from '../background/api-key-store';
-import type { ExtensionMessage, ExtensionResponse } from '../shared/messages';
+import type { ExtensionMessage, ExtensionResponse, SettingsMessage, SettingsResponse } from '../shared/messages';
 import { UI_TEXT } from '../shared/ui-text';
 import type { UiTextKey } from '../shared/ui-text';
 
@@ -33,7 +32,13 @@ const toggleButton = requireElement<HTMLButtonElement>('#toggle-key');
 const clearButton = requireElement<HTMLButtonElement>('#clear-key');
 const testButton = requireElement<HTMLButtonElement>('#test-key');
 const status = requireElement<HTMLElement>('#settings-status');
-const store = new ApiKeyStore(chrome.storage.local);
+async function settingsMessage(message: SettingsMessage): Promise<SettingsResponse> {
+  const response = await chrome.runtime.sendMessage<SettingsMessage, SettingsResponse>(message);
+  if (!response?.ok) {
+    throw new Error(response?.message ?? UI_TEXT.connectionFailed);
+  }
+  return response;
+}
 
 function setStatus(message: string, tone: 'success' | 'error' | 'neutral' = 'neutral'): void {
   status.textContent = message;
@@ -41,7 +46,11 @@ function setStatus(message: string, tone: 'success' | 'error' | 'neutral' = 'neu
 }
 
 async function initialize(): Promise<void> {
-  apiKeyInput.value = await store.get();
+  const response = await settingsMessage({ type: 'get-settings' });
+  if (!('apiKey' in response)) {
+    throw new Error(UI_TEXT.settingsReadFailed);
+  }
+  apiKeyInput.value = response.apiKey;
   if (apiKeyInput.value) {
     setStatus(UI_TEXT.keyLoaded);
   }
@@ -49,7 +58,7 @@ async function initialize(): Promise<void> {
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();
-  void store.save(apiKeyInput.value).then(() => {
+  void settingsMessage({ type: 'save-settings', apiKey: apiKeyInput.value }).then(() => {
     apiKeyInput.value = apiKeyInput.value.trim();
     setStatus(apiKeyInput.value ? UI_TEXT.keySaved : UI_TEXT.keyCleared, 'success');
   }).catch(() => {
@@ -58,7 +67,7 @@ form.addEventListener('submit', (event) => {
 });
 
 clearButton.addEventListener('click', () => {
-  void store.clear().then(() => {
+  void settingsMessage({ type: 'clear-settings' }).then(() => {
     apiKeyInput.value = '';
     setStatus(UI_TEXT.keyCleared, 'success');
   }).catch(() => {
