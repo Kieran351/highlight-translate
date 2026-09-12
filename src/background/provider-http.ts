@@ -17,7 +17,14 @@ export function failureForStatus(status: number): ProviderFailure {
 export async function providerFetch(fetchImpl: FetchLike, url: string, init: RequestInit): Promise<Response> {
   try {
     const response = await fetchImpl(url, { ...init, redirect: 'error' });
-    if (!response.ok) throw failureForStatus(response.status);
+    if (!response.ok) {
+      let mapped: ProviderFailure | undefined;
+      try {
+        const errorBody: unknown = await response.json();
+        if (isRecord(errorBody)) mapped = streamError(errorBody.error);
+      } catch { /* Non-JSON errors still have a safe HTTP classification. */ }
+      throw mapped && mapped.code !== 'server' ? mapped : failureForStatus(response.status);
+    }
     // Also enforce the boundary with injected transports that follow redirects.
     if (response.redirected || (response.url && new URL(response.url).origin !== new URL(url).origin)) {
       throw new ProviderFailure('network');
@@ -51,10 +58,10 @@ export function parseStreamJson(data: string): Record<string, unknown> {
 }
 
 export function streamError(value: unknown): ProviderFailure {
-  const type = isRecord(value) ? value.type ?? value.code : undefined;
-  if (type === 'authentication_error' || type === 'permission_error') return new ProviderFailure('authentication');
-  if (type === 'rate_limit_error') return new ProviderFailure('rate_limit');
-  if (type === 'insufficient_quota' || type === 'billing_error') return new ProviderFailure('quota');
+  const identifiers = isRecord(value) ? [value.type, value.code] : [];
+  if (identifiers.some((id) => id === 'authentication_error' || id === 'permission_error' || id === 'invalid_api_key')) return new ProviderFailure('authentication');
+  if (identifiers.some((id) => id === 'insufficient_quota' || id === 'billing_error')) return new ProviderFailure('quota');
+  if (identifiers.some((id) => id === 'rate_limit_error' || id === 'rate_limit_exceeded')) return new ProviderFailure('rate_limit');
   return new ProviderFailure('server');
 }
 
