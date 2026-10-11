@@ -1,31 +1,17 @@
 import styles from './content.css?inline';
 
-import {
-  applyServerMessage,
-  beginRequest,
-  beginRetry,
-  canCopyResult,
-  createCardState,
-  getRequestActivity,
-} from './card-state';
-import type { CardState } from './card-state';
 import { createCardInteraction } from './card-interaction';
 import type { CardInteraction, CardInteractionEnvironment } from './card-interaction';
+import { connectExtensionPort, createTranslationClient } from './translation-client';
+import type { TranslationClient, TranslationClientDependencies, TranslationView } from './translation-client';
 import { endpointFromSelection } from './geometry';
 import { evaluateSelection, isEditableNode } from './selection-policy';
-import { PORT_NAME } from '../shared/constants';
-import { getErrorPresentation } from '../shared/errors';
-import type {
-  ClientPortMessage,
-  ExtensionMessage,
-  ServerPortMessage,
-} from '../shared/messages';
+import type { ExtensionMessage } from '../shared/messages';
 import { UI_TEXT } from '../shared/ui-text';
 
 interface ActiveSelection {
   text: string;
   range: Range;
-  tooLong: boolean;
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(
@@ -39,15 +25,10 @@ function element<K extends keyof HTMLElementTagNameMap>(
   return value;
 }
 
-function isServerMessage(value: unknown): value is ServerPortMessage {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return typeof record.type === 'string'
-    && typeof record.requestId === 'string'
-    && ['route', 'chunk', 'complete', 'error', 'cancelled'].includes(record.type);
+export interface HighlightTranslateUiOptions {
+  environment?: Partial<CardInteractionEnvironment>;
+  connect?: TranslationClientDependencies['connect'];
+  createRequestId?: TranslationClientDependencies['createRequestId'];
 }
 
 export class HighlightTranslateUi {
@@ -65,14 +46,13 @@ export class HighlightTranslateUi {
   private readonly closeButton = element('button', 'ht-close', '×');
   private readonly resizeHandle = element('span', 'ht-resize-handle');
   private readonly interaction: CardInteraction;
+  private readonly translationClient: TranslationClient;
   private activeSelection: ActiveSelection | null = null;
-  private state: CardState = createCardState();
-  private port: chrome.runtime.Port | null = null;
   private followOutput = true;
   private copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   private stage: 'idle' | 'trigger' | 'card' = 'idle';
 
-  constructor(environment: Partial<CardInteractionEnvironment> = {}) {
+  constructor(options: HighlightTranslateUiOptions = {}) {
     this.host.dataset.highlightTranslateRoot = '';
     this.shadow = this.host.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
@@ -80,7 +60,6 @@ export class HighlightTranslateUi {
     this.shadow.append(style, this.trigger, this.card);
     document.documentElement.append(this.host);
     this.buildCard();
-    this.bindEvents();
     this.interaction = createCardInteraction({
       host: this.host,
       trigger: this.trigger,
@@ -88,7 +67,14 @@ export class HighlightTranslateUi {
       header: this.header,
       closeButton: this.closeButton,
       resizeHandle: this.resizeHandle,
-    }, environment);
+    }, options.environment);
+    this.translationClient = createTranslationClient({
+      connect: options.connect ?? connectExtensionPort,
+      createRequestId: options.createRequestId ?? (() => crypto.randomUUID().replaceAll('-', '')),
+    });
+    this.translationClient.subscribe((view) => this.render(view));
+    this.render(this.translationClient.view());
+    this.bindEvents();
   }
 
   private buildCard(): void {
@@ -121,8 +107,8 @@ export class HighlightTranslateUi {
   private bindEvents(): void {
     this.trigger.addEventListener('mousedown', (event) => event.preventDefault());
     this.trigger.addEventListener('click', () => this.openCard());
-    this.closeButton.addEventListener('click', () => this.close(true));
-    this.retryButton.addEventListener('click', () => this.retry());
+    this.closeButton.addEventListener('click', () => this.close());
+    this.retryButton.addEventListener('click', () => this.translationClient.retry());
     this.settingsButton.addEventListener('click', () => {
       const message: ExtensionMessage = { type: 'open-options' };
       void chrome.runtime.sendMessage(message);
@@ -136,12 +122,12 @@ export class HighlightTranslateUi {
     document.addEventListener('mouseup', (event) => this.onMouseUp(event), true);
     document.addEventListener('pointerdown', (event) => {
       if (!event.composedPath().includes(this.host) && this.stage === 'card') {
-        this.close(true);
+        this.close();
       }
     }, true);
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && this.stage === 'card') {
-        this.close(true);
+        this.close();
       }
     }, true);
   }
@@ -169,14 +155,14 @@ export class HighlightTranslateUi {
       || isEditableNode(selection.anchorNode)
       || isEditableNode(selection.focusNode)
     ) {
-      this.close(true);
+      this.close();
       return;
     }
 
     const evaluation = evaluateSelection(selection.toString());
     const endpoint = endpointFromSelection(selection);
     if (evaluation.kind === 'invalid' || !endpoint) {
-      this.close(true);
+      this.close();
       return;
     }
 
@@ -184,15 +170,12 @@ export class HighlightTranslateUi {
     endpointRange.setStart(endpoint.node, endpoint.offset);
     endpointRange.collapse(true);
 
-    this.cancelActiveRequest();
+    this.translationClient.cancel();
     this.activeSelection = {
       text: evaluation.text,
       range: endpointRange,
-      tooLong: evaluation.kind === 'too-long',
     };
-    this.state = createCardState();
     this.stage = 'trigger';
-    this.interaction.setRequestActivity(getRequestActivity(this.state));
     this.interaction.showTrigger(endpointRange);
   }
 
@@ -204,153 +187,43 @@ export class HighlightTranslateUi {
     this.stage = 'card';
     this.interaction.openCard();
     this.followOutput = true;
-
-    if (this.activeSelection.tooLong) {
-      const presentation = getErrorPresentation('too_long');
-      this.state = {
-        ...createCardState(),
-        direction: UI_TEXT.unableToTranslate,
-        status: 'error',
-        errorMessage: presentation.message,
-      };
-      this.render();
-      return;
-    }
-
-    this.startRequest(false);
+    this.translationClient.translate(this.activeSelection.text);
   }
 
-  private ensurePort(): chrome.runtime.Port | null {
-    if (this.port) {
-      return this.port;
-    }
-
-    try {
-      if (typeof chrome === 'undefined' || typeof chrome.runtime?.connect !== 'function') {
-        return null;
-      }
-
-      const port = chrome.runtime.connect({ name: PORT_NAME });
-      port.onMessage.addListener((message: unknown) => this.onServerMessage(message));
-      port.onDisconnect.addListener(() => {
-        if (this.port !== port) {
-          return;
-        }
-        this.port = null;
-        if (this.state.status === 'streaming' && this.state.requestId) {
-          this.onServerMessage({
-            type: 'error',
-            requestId: this.state.requestId,
-            code: 'network',
-            message: getErrorPresentation('network').message,
-            retryable: true,
-            partial: this.state.text.length > 0,
-          });
-        }
-      });
-      this.port = port;
-      return port;
-    } catch {
-      this.port = null;
-      return null;
-    }
-  }
-
-  private failInvalidExtensionContext(requestId: string): void {
-    this.onServerMessage({
-      type: 'error',
-      requestId,
-      code: 'network',
-      message: UI_TEXT.extensionContextInvalid,
-      retryable: false,
-      partial: this.state.text.length > 0,
-    });
-  }
-
-  private postPortMessage(port: chrome.runtime.Port, message: ClientPortMessage): boolean {
-    try {
-      port.postMessage(message);
-      return true;
-    } catch {
-      if (this.port === port) {
-        this.port = null;
-      }
-      return false;
-    }
-  }
-
-  private startRequest(retry: boolean): void {
-    if (!this.activeSelection) {
-      return;
-    }
-
-    this.cancelActiveRequest();
-    const requestId = crypto.randomUUID().replaceAll('-', '');
-    this.state = retry
-      ? beginRetry(this.state, requestId)
-      : beginRequest(this.state, requestId);
-    this.render();
-
-    const message: ClientPortMessage = {
-      type: 'translate',
-      requestId,
-      text: this.activeSelection.text,
-    };
-    const port = this.ensurePort();
-    if (!port || !this.postPortMessage(port, message)) {
-      this.failInvalidExtensionContext(requestId);
-    }
-  }
-
-  private retry(): void {
-    if (!this.state.retryable) {
-      return;
-    }
-    this.startRequest(true);
-  }
-
-  private onServerMessage(message: unknown): void {
-    if (!isServerMessage(message) || message.requestId !== this.state.requestId) {
-      return;
-    }
-
+  private render(view: TranslationView): void {
     const shouldFollow = this.followOutput;
-    this.state = applyServerMessage(this.state, message);
-    this.render();
+    const previousText = this.result.textContent ?? '';
+    this.direction.textContent = view.direction;
+    this.result.textContent = view.text;
+    this.copyButton.disabled = !view.canCopy;
+    this.retryButton.classList.toggle('ht-hidden', !view.retryable);
+    this.settingsButton.classList.toggle('ht-hidden', !view.showSettings);
+    this.interaction.setRequestActivity(view.activity);
 
-    if (message.type === 'chunk' && shouldFollow) {
+    this.status.dataset.tone = view.status === 'error' || view.status === 'partial'
+      ? 'error'
+      : 'neutral';
+    if (view.status === 'streaming') {
+      this.status.textContent = UI_TEXT.translating;
+    } else if (view.status === 'partial') {
+      this.status.textContent = `${UI_TEXT.incompleteTranslation} · ${view.errorMessage}`;
+    } else {
+      this.status.textContent = view.errorMessage;
+    }
+
+    if (view.text !== previousText && shouldFollow) {
       this.result.scrollTop = this.result.scrollHeight;
       this.followOutput = true;
     }
   }
 
-  private render(): void {
-    this.direction.textContent = this.state.direction;
-    this.result.textContent = this.state.text;
-    this.copyButton.disabled = !canCopyResult(this.state);
-    this.retryButton.classList.toggle('ht-hidden', !this.state.retryable);
-    this.settingsButton.classList.toggle('ht-hidden', !this.state.showSettings);
-    this.interaction.setRequestActivity(getRequestActivity(this.state));
-
-    this.status.dataset.tone = this.state.status === 'error' || this.state.status === 'partial'
-      ? 'error'
-      : 'neutral';
-    if (this.state.status === 'streaming') {
-      this.status.textContent = UI_TEXT.translating;
-    } else if (this.state.status === 'partial') {
-      this.status.textContent = `${UI_TEXT.incompleteTranslation} · ${this.state.errorMessage}`;
-    } else {
-      this.status.textContent = this.state.errorMessage;
-    }
-
-  }
-
   private copyResult(): void {
-    if (!canCopyResult(this.state)) {
+    const view = this.translationClient.view();
+    if (!view.canCopy) {
       return;
     }
 
-    void navigator.clipboard.writeText(this.state.text).then(() => {
+    void navigator.clipboard.writeText(view.text).then(() => {
       this.copyButton.textContent = UI_TEXT.copied;
       if (this.copyFeedbackTimer) {
         clearTimeout(this.copyFeedbackTimer);
@@ -364,29 +237,14 @@ export class HighlightTranslateUi {
     });
   }
 
-  private cancelActiveRequest(): void {
-    if (!this.state.requestId || this.state.status !== 'streaming' || !this.port) {
-      return;
-    }
-
-    const message: ClientPortMessage = { type: 'cancel', requestId: this.state.requestId };
-    this.postPortMessage(this.port, message);
-  }
-
-  private close(cancel: boolean): void {
-    if (cancel) {
-      this.cancelActiveRequest();
-    }
+  private close(): void {
+    this.translationClient.cancel();
     this.activeSelection = null;
-    this.state = createCardState();
     this.stage = 'idle';
-    this.interaction.setRequestActivity(getRequestActivity(this.state));
     this.interaction.hide();
   }
 }
 
-export function mountHighlightTranslateUi(
-  environment: Partial<CardInteractionEnvironment> = {},
-): HighlightTranslateUi | null {
-  return window.top === window ? new HighlightTranslateUi(environment) : null;
+export function mountHighlightTranslateUi(options: HighlightTranslateUiOptions = {}): HighlightTranslateUi | null {
+  return window.top === window ? new HighlightTranslateUi(options) : null;
 }
