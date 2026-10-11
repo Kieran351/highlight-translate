@@ -17,7 +17,7 @@ function createHarness(streamTranslation: TranslationDependencies['streamTransla
   const port = new FakePort();
   createTranslationSession(port, {
     detectLanguage: vi.fn().mockResolvedValue({ kind: 'known', code: 'en', label: '英语' }),
-    getApiKey: vi.fn().mockResolvedValue('key'),
+    getRequestConfiguration: vi.fn().mockResolvedValue({ providerId: 'deepseek', apiKey: 'key', modelId: 'timeout-model' }),
     streamTranslation,
     timeouts: { firstContentMs: 20, idleMs: 20, totalMs: 120 },
   });
@@ -62,7 +62,7 @@ describe('translation timeouts', () => {
     const port = new FakePort();
     createTranslationSession(port, {
       detectLanguage: vi.fn().mockResolvedValue({ kind: 'known', code: 'en', label: '英语' }),
-      getApiKey: vi.fn().mockResolvedValue('key'),
+      getRequestConfiguration: vi.fn().mockResolvedValue({ providerId: 'deepseek', apiKey: 'key', modelId: 'timeout-model' }),
       streamTranslation: stream,
       timeouts: { firstContentMs: 20, idleMs: 20, totalMs: 35 },
     });

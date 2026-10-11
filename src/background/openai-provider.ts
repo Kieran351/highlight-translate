@@ -65,7 +65,7 @@ export class OpenAIProvider implements CatalogProvider {
     });
   }
 
-  async testConnection(apiKey: string, modelId?: string): Promise<void> {
+  async testConnection(apiKey: string, modelId: string): Promise<void> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
     try { await this.stream({ apiKey, modelId, text: 'Hello', signal: controller.signal, onChunk: () => undefined }); }

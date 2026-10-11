@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   DEEPSEEK_API_URL,
-  DEEPSEEK_MODEL,
   DeepSeekProvider,
 } from '../../src/background/deepseek-provider';
 import { createLanguageRouter } from '../../src/background/language-router';
@@ -29,7 +28,11 @@ function streamFrom(chunks: string[]): ReadableStream<Uint8Array> {
 function dependencies(overrides: Partial<TranslationDependencies> = {}): TranslationDependencies {
   return {
     detectLanguage: vi.fn().mockResolvedValue({ kind: 'known', code: 'en', label: '英语' }),
-    getApiKey: vi.fn().mockResolvedValue('test-key'),
+    getRequestConfiguration: vi.fn().mockResolvedValue({
+      providerId: 'deepseek',
+      apiKey: 'test-key',
+      modelId: 'test-model',
+    }),
     streamTranslation: vi.fn(async ({ onChunk }) => {
       onChunk('你');
       onChunk('好');
@@ -45,13 +48,11 @@ async function waitForMessage(port: FakePort, type: ServerPortMessage['type']): 
 }
 
 describe('translation port protocol', () => {
-  it('returns a Chinese selection locally without reading the key or calling the provider', async () => {
+  it('returns a Chinese selection locally without calling the provider', async () => {
     const port = new FakePort();
-    const getApiKey = vi.fn();
     const streamTranslation = vi.fn();
     createTranslationSession(port, dependencies({
       detectLanguage: vi.fn().mockResolvedValue({ kind: 'chinese', label: '中文' }),
-      getApiKey,
       streamTranslation,
     }));
 
@@ -63,7 +64,6 @@ describe('translation port protocol', () => {
       { type: 'chunk', requestId: 'r1', text: '你好，世界' },
       { type: 'complete', requestId: 'r1' },
     ]);
-    expect(getApiKey).not.toHaveBeenCalled();
     expect(streamTranslation).not.toHaveBeenCalled();
   });
 
@@ -144,7 +144,11 @@ describe('translation port protocol', () => {
     const provider = new DeepSeekProvider(fetchImpl);
     const port = new FakePort();
     createTranslationSession(port, dependencies({
-      getApiKey: vi.fn().mockResolvedValue('private-key'),
+      getRequestConfiguration: vi.fn().mockResolvedValue({
+        providerId: 'deepseek',
+        apiKey: 'private-key',
+        modelId: 'configured-deepseek-model',
+      }),
       streamTranslation: (input) => provider.stream(input),
     }));
 
@@ -159,7 +163,7 @@ describe('translation port protocol', () => {
       'Content-Type': 'application/json',
     });
     expect(requestBody).toMatchObject({
-      model: DEEPSEEK_MODEL,
+      model: 'configured-deepseek-model',
       stream: true,
       thinking: { type: 'disabled' },
       messages: [expect.objectContaining({ role: 'system' }), { role: 'user', content: selection }],
@@ -213,11 +217,14 @@ describe('translation port protocol', () => {
     expect(JSON.stringify(port.messages)).not.toContain('test-key');
   });
 
-  it('reports missing configuration without calling the provider', async () => {
+  it.each([
+    ['missing', async () => null],
+    ['unavailable', async () => { throw new Error('configuration unavailable'); }],
+  ])('reports invalid configuration when it is %s without calling the provider', async (_state, getRequestConfiguration) => {
     const port = new FakePort();
     const streamTranslation = vi.fn();
     createTranslationSession(port, dependencies({
-      getApiKey: vi.fn().mockResolvedValue(''),
+      getRequestConfiguration,
       streamTranslation,
     }));
 
@@ -227,9 +234,10 @@ describe('translation port protocol', () => {
     expect(port.messages.at(-1)).toMatchObject({
       type: 'error',
       requestId: 'r3',
-      code: 'missing_key',
+      code: 'invalid_configuration',
       retryable: false,
       partial: false,
+      showSettings: true,
     });
     expect(streamTranslation).not.toHaveBeenCalled();
   });

@@ -15,8 +15,8 @@ function start(provider: KimiProvider): FakePort {
   const port = new FakePort();
   createTranslationSession(port, {
     detectLanguage: async () => ({ kind: 'unknown', label: '自动检测' }),
-    getApiKey: async () => 'private-key',
-    streamTranslation: (input) => provider.stream({ ...input, modelId: 'future-kimi' }),
+    getRequestConfiguration: async () => ({ providerId: 'kimi', apiKey: 'private-key', modelId: 'future-kimi' }),
+    streamTranslation: (input) => provider.stream(input),
   });
   port.onMessage.emit({ type: 'translate', requestId: 'kimi', text: 'Complete selection' });
   return port;

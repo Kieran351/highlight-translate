@@ -28,8 +28,8 @@ function start(provider: MiniMaxProvider): FakePort {
   const port = new FakePort();
   createTranslationSession(port, {
     detectLanguage: async () => ({ kind: 'unknown', label: '自动检测' }),
-    getApiKey: async () => 'private-key',
-    streamTranslation: (input) => provider.stream({ ...input, modelId: 'future-model' }),
+    getRequestConfiguration: async () => ({ providerId: 'minimax', apiKey: 'private-key', modelId: 'future-model' }),
+    streamTranslation: (input) => provider.stream(input),
   });
   port.onMessage.emit({ type: 'translate', requestId: 'vendor', text: 'Complete selection' });
   return port;

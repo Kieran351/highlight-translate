@@ -19,9 +19,8 @@ export interface PortLike {
 
 export interface TranslationDependencies {
   detectLanguage(text: string): Promise<LanguageRoute>;
-  getApiKey?(): Promise<string>;
-  getRequestConfiguration?(): Promise<RequestConfiguration | null>;
-  streamTranslation(input: StreamTranslationInput & { providerId?: RequestConfiguration['providerId'] }): Promise<void>;
+  getRequestConfiguration(): Promise<RequestConfiguration | null>;
+  streamTranslation(input: StreamTranslationInput & { providerId: RequestConfiguration['providerId'] }): Promise<void>;
   timeouts?: {
     firstContentMs: number;
     idleMs: number;
@@ -95,16 +94,14 @@ async function runTranslation(
   }
 
   // Capture before language detection; local Chinese results never await this read.
-  let configurationPromise: Promise<{ configuration: RequestConfiguration | null } | { failed: true }> | undefined;
-  if (dependencies.getRequestConfiguration) {
-    try {
-      configurationPromise = dependencies.getRequestConfiguration().then(
-        (configuration) => ({ configuration }),
-        () => ({ failed: true }),
-      );
-    } catch {
-      configurationPromise = Promise.resolve({ failed: true });
-    }
+  let configurationPromise: Promise<{ configuration: RequestConfiguration | null } | { failed: true }>;
+  try {
+    configurationPromise = dependencies.getRequestConfiguration().then(
+      (configuration) => ({ configuration }),
+      () => ({ failed: true }),
+    );
+  } catch {
+    configurationPromise = Promise.resolve({ failed: true });
   }
 
   const route = await dependencies.detectLanguage(text);
@@ -125,17 +122,11 @@ async function runTranslation(
     return;
   }
 
-  let configuration: RequestConfiguration | null = null;
-  let apiKey: string;
+  let configuration: RequestConfiguration | null;
   try {
-    if (configurationPromise) {
-      const result = await configurationPromise;
-      if ('failed' in result) throw new Error('Configuration unavailable');
-      configuration = result.configuration;
-      apiKey = configuration?.apiKey ?? '';
-    } else {
-      apiKey = (await dependencies.getApiKey?.())?.trim() ?? '';
-    }
+    const result = await configurationPromise;
+    if ('failed' in result) throw new Error('Configuration unavailable');
+    configuration = result.configuration;
   } catch {
     if (!controller.signal.aborted) postError(port, requestId, 'invalid_configuration', false);
     return;
@@ -144,8 +135,8 @@ async function runTranslation(
     return;
   }
 
-  if (!apiKey) {
-    postError(port, requestId, dependencies.getRequestConfiguration ? 'invalid_configuration' : 'missing_key', false);
+  if (!configuration?.apiKey) {
+    postError(port, requestId, 'invalid_configuration', false);
     return;
   }
 
@@ -171,8 +162,9 @@ async function runTranslation(
 
   try {
     await dependencies.streamTranslation({
-      apiKey,
-      ...(configuration ? { providerId: configuration.providerId, modelId: configuration.modelId } : {}),
+      apiKey: configuration.apiKey,
+      providerId: configuration.providerId,
+      modelId: configuration.modelId,
       text,
       signal: controller.signal,
       onChunk: (chunk) => {

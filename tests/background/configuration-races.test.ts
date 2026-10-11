@@ -107,7 +107,7 @@ describe('configuration ordering through public messages', () => {
     const originalGet = storage.get.getMockImplementation()!;
     storage.get.mockImplementationOnce(async () => { await readGate.promise; return originalGet(); });
     const port = new FakePort();
-    createTranslationSession(port, { detectLanguage: () => detected.promise, getRequestConfiguration: () => manager.requestConfiguration(), streamTranslation: (input) => resolveProvider(input.providerId!).stream(input) });
+    createTranslationSession(port, { detectLanguage: () => detected.promise, getRequestConfiguration: () => manager.requestConfiguration(), streamTranslation: (input) => resolveProvider(input.providerId).stream(input) });
     port.onMessage.emit({ type: 'translate', requestId: 'accepted', text: 'Selected before save.' });
     const saving = save(changed.catalogToken, 'key-b', 'model-b');
     await Promise.resolve();
@@ -129,7 +129,7 @@ describe('configuration ordering through public messages', () => {
     if (mode === 'pending') storage.get.mockReturnValueOnce(pending.promise);
     else storage.get.mockRejectedValueOnce(new Error('private storage error'));
     const port = new FakePort();
-    createTranslationSession(port, { detectLanguage: async () => ({ kind: 'chinese', label: '中文' }), getRequestConfiguration: () => manager.requestConfiguration(), streamTranslation: (input) => resolveProvider(input.providerId!).stream(input) });
+    createTranslationSession(port, { detectLanguage: async () => ({ kind: 'chinese', label: '中文' }), getRequestConfiguration: () => manager.requestConfiguration(), streamTranslation: (input) => resolveProvider(input.providerId).stream(input) });
     port.onMessage.emit({ type: 'translate', requestId: 'local', text: '中文文本' });
     await vi.waitFor(() => expect(port.messages).toContainEqual({ type: 'complete', requestId: 'local' }));
     expect(port.messages).toContainEqual({ type: 'chunk', requestId: 'local', text: '中文文本' });
@@ -145,7 +145,7 @@ describe('configuration ordering through public messages', () => {
     let controller!: ReadableStreamDefaultController<Uint8Array>;
     fetchImpl.mockResolvedValueOnce(new Response(new ReadableStream({ start(stream) { controller = stream; } })));
     const port = new FakePort();
-    createTranslationSession(port, { detectLanguage: async () => ({ kind: 'unknown', label: '自动检测' }), getRequestConfiguration: () => manager.requestConfiguration(), streamTranslation: (input) => resolveProvider(input.providerId!).stream(input) });
+    createTranslationSession(port, { detectLanguage: async () => ({ kind: 'unknown', label: '自动检测' }), getRequestConfiguration: () => manager.requestConfiguration(), streamTranslation: (input) => resolveProvider(input.providerId).stream(input) });
     port.onMessage.emit({ type: 'translate', requestId: 'first', text: 'Selected first.' });
     const encoder = new TextEncoder();
     controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"原配置"}}]}\n\n'));

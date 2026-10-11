@@ -25,8 +25,8 @@ function start(provider: AnthropicProvider): FakePort {
   const port = new FakePort();
   createTranslationSession(port, {
     detectLanguage: async () => ({ kind: 'unknown', label: '自动检测' }),
-    getApiKey: async () => 'private-key',
-    streamTranslation: (input) => provider.stream({ ...input, modelId: 'future-claude' }),
+    getRequestConfiguration: async () => ({ providerId: 'anthropic', apiKey: 'private-key', modelId: 'future-claude' }),
+    streamTranslation: (input) => provider.stream(input),
   });
   port.onMessage.emit({ type: 'translate', requestId: 'anthropic', text: 'Complete selection' });
   return port;

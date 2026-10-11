@@ -35,7 +35,7 @@ describe('DeepSeekProvider default fetch', () => {
 
     const provider = new DeepSeekProvider();
 
-    await expect(provider.testConnection('private-key')).resolves.toBeUndefined();
+    await expect(provider.testConnection('private-key', 'test-model')).resolves.toBeUndefined();
     expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
@@ -52,6 +52,7 @@ describe('DeepSeekProvider default fetch', () => {
     const provider = new DeepSeekProvider();
     await provider.stream({
       apiKey: 'private-key',
+      modelId: 'test-model',
       text: 'Hello',
       signal: new AbortController().signal,
       onChunk,
@@ -63,6 +64,21 @@ describe('DeepSeekProvider default fetch', () => {
 });
 
 describe('DeepSeek request and termination boundaries', () => {
+  it('rejects a missing model for translation and connection testing', async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const provider = new DeepSeekProvider(fetchImpl);
+
+    await expect(provider.stream({
+      apiKey: 'private-key',
+      modelId: '',
+      text: 'Hello',
+      signal: new AbortController().signal,
+      onChunk: () => undefined,
+    })).rejects.toMatchObject({ code: 'invalid_configuration' });
+    await expect(provider.testConnection('private-key', '')).rejects.toMatchObject({ code: 'invalid_configuration' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('disallows redirects for catalog, translation and connection testing', async () => {
     const fetchImpl = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(Response.json({ data: [{ id: 'dynamic-model' }] }))
@@ -80,7 +96,8 @@ describe('DeepSeek request and termination boundaries', () => {
     const provider = new DeepSeekProvider(async () => new Response(streamFrom(`data: ${JSON.stringify({ choices: [{ delta: { content: '部分' }, finish_reason: reason }] })}\n\ndata: [DONE]\n\n`)));
     const port = new FakePort();
     createTranslationSession(port, {
-      detectLanguage: async () => ({ kind: 'unknown', label: '自动检测' }), getApiKey: async () => 'private-key',
+      detectLanguage: async () => ({ kind: 'unknown', label: '自动检测' }),
+      getRequestConfiguration: async () => ({ providerId: 'deepseek', apiKey: 'private-key', modelId: 'future-model' }),
       streamTranslation: (input) => provider.stream(input),
     });
     port.onMessage.emit({ type: 'translate', requestId: 'deepseek', text: 'Hello' });
@@ -94,7 +111,8 @@ describe('DeepSeek request and termination boundaries', () => {
     const provider = new DeepSeekProvider(fetchImpl);
     const port = new FakePort();
     createTranslationSession(port, {
-      detectLanguage: async () => ({ kind: 'unknown', label: '自动检测' }), getApiKey: async () => 'private-key',
+      detectLanguage: async () => ({ kind: 'unknown', label: '自动检测' }),
+      getRequestConfiguration: async () => ({ providerId: 'deepseek', apiKey: 'private-key', modelId: 'future-model' }),
       streamTranslation: (input) => provider.stream(input),
     });
     port.onMessage.emit({ type: 'translate', requestId: 'deepseek', text: 'Hello' });
