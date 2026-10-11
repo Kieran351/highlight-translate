@@ -1,7 +1,6 @@
 import { ConfigurationStore } from './configuration-store';
 import { ConfigurationManager } from './configuration-manager';
 import { resolveProvider } from './provider-registry';
-import { ProviderFailure } from './provider';
 import { createLanguageRouter } from './language-router';
 import { createSettingsMessageHandler } from './settings-handler';
 import { createTranslationSession } from './translation-session';
@@ -58,10 +57,7 @@ chrome.runtime.onConnect.addListener((port) => {
   createTranslationSession(port as unknown as PortLike, {
     detectLanguage,
     getRequestConfiguration: () => manager.requestConfiguration(),
-    streamTranslation: (input) => {
-      if (!input.providerId) throw new ProviderFailure('invalid_configuration');
-      return resolveProvider(input.providerId).stream(input);
-    },
+    streamTranslation: (input) => resolveProvider(input.providerId).stream(input),
   });
 });
 

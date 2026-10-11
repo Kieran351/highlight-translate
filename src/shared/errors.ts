@@ -8,7 +8,6 @@ const ERROR_PRESENTATIONS: Record<AppErrorCode, ErrorPresentation> = {
   invalid_models: { message: '模型列表响应无效，请重新获取。', retryable: true },
   provider_unverified: { message: '该供应商的模型列表接口尚待核实。', retryable: false, showSettings: true },
   unsupported_provider: { message: '暂不支持该供应商。', retryable: false, showSettings: true },
-  missing_key: { message: '尚未配置 API Key。', retryable: false, showSettings: true },
   authentication: { message: 'API Key 无效，请前往设置检查。', retryable: false, showSettings: true },
   rate_limit: { message: '请求过于频繁，请稍后再试。', retryable: true },
   quota: { message: '供应商账户余额或额度不足，请检查账户。', retryable: false, showSettings: true },

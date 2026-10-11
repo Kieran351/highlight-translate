@@ -19,8 +19,8 @@ function start(provider: OpenAIProvider, modelId = 'future-text-model'): FakePor
   const port = new FakePort();
   createTranslationSession(port, {
     detectLanguage: async () => ({ kind: 'unknown', label: '自动检测' }),
-    getApiKey: async () => 'private-key',
-    streamTranslation: (input) => provider.stream({ ...input, modelId }),
+    getRequestConfiguration: async () => ({ providerId: 'openai', apiKey: 'private-key', modelId }),
+    streamTranslation: (input) => provider.stream(input),
   });
   port.onMessage.emit({ type: 'translate', requestId: 'openai', text: 'Complete selection' });
   return port;

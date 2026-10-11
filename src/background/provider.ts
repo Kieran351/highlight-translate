@@ -14,7 +14,7 @@ export class ProviderFailure extends Error {
 
 export interface StreamTranslationInput {
   apiKey: string;
-  modelId?: string;
+  modelId: string;
   text: string;
   signal: AbortSignal;
   onChunk: (text: string) => void;
@@ -22,7 +22,7 @@ export interface StreamTranslationInput {
 
 export interface TranslationProvider {
   stream(input: StreamTranslationInput): Promise<void>;
-  testConnection(apiKey: string, modelId?: string): Promise<void>;
+  testConnection(apiKey: string, modelId: string): Promise<void>;
 }
 
 export interface ListModelsInput {

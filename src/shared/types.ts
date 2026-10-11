@@ -6,7 +6,6 @@ export type LanguageRoute =
 export type AppErrorCode =
   | 'invalid_request'
   | 'too_long'
-  | 'missing_key'
   | 'invalid_configuration'
   | 'catalog_expired'
   | 'invalid_models'

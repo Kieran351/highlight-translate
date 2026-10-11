@@ -7,7 +7,6 @@ import { defaultFetch, isRecord, parseStreamJson, providerFetch, readModelJson, 
 import type { FetchLike } from './provider-http';
 
 export const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
-export const DEEPSEEK_MODEL = 'deepseek-v4-flash';
 
 function parseDataPayload(payload: string, onChunk: (text: string) => void): boolean {
   if (payload === '[DONE]') return true;
@@ -80,7 +79,7 @@ export async function parseDeepSeekSse(
   }
 }
 
-function requestBody(text: string, stream: boolean, modelId = DEEPSEEK_MODEL): string {
+function requestBody(text: string, stream: boolean, modelId: string): string {
   return JSON.stringify({
     model: modelId,
     messages: [
@@ -110,6 +109,7 @@ export class DeepSeekProvider implements CatalogProvider {
   }
 
   async stream({ apiKey, modelId, text, signal, onChunk }: StreamTranslationInput): Promise<void> {
+    if (!modelId) throw new ProviderFailure('invalid_configuration');
     const response = await providerFetch(this.fetchImpl, DEEPSEEK_API_URL, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -120,7 +120,8 @@ export class DeepSeekProvider implements CatalogProvider {
     await parseDeepSeekSse(response.body, onChunk, signal);
   }
 
-  async testConnection(apiKey: string, modelId?: string): Promise<void> {
+  async testConnection(apiKey: string, modelId: string): Promise<void> {
+    if (!modelId) throw new ProviderFailure('invalid_configuration');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
     try {
