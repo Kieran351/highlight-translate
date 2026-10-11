@@ -32,7 +32,7 @@ vi.stubGlobal('chrome', {
   },
 });
 
-const { mountHighlightTranslateUi } = await import('../../src/content/content-script');
+const { mountHighlightTranslateUi } = await import('../../src/content/highlight-translate-ui');
 
 interface TestUi {
   host: HTMLElement;
@@ -79,6 +79,12 @@ if (!mounted) {
   throw new Error('The test UI must mount in a top-level document');
 }
 const ui = mounted as unknown as TestUi;
+
+describe('content script mount', () => {
+  it('creates one translation host', () => {
+    expect(document.querySelectorAll('[data-highlight-translate-root]')).toHaveLength(1);
+  });
+});
 
 Object.defineProperties(ui.card, {
   offsetWidth: {
