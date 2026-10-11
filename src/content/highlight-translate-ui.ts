@@ -26,6 +26,7 @@ function element<K extends keyof HTMLElementTagNameMap>(
 }
 
 export interface HighlightTranslateUiOptions {
+  shadowMode?: ShadowRootMode;
   environment?: Partial<CardInteractionEnvironment>;
   connect?: TranslationClientDependencies['connect'];
   createRequestId?: TranslationClientDependencies['createRequestId'];
@@ -51,10 +52,22 @@ export class HighlightTranslateUi {
   private followOutput = true;
   private copyFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   private stage: 'idle' | 'trigger' | 'card' = 'idle';
+  private disposed = false;
+  private readonly documentMouseUpListener = (event: MouseEvent): void => this.onMouseUp(event);
+  private readonly documentPointerDownListener = (event: PointerEvent): void => {
+    if (!event.composedPath().includes(this.host) && this.stage === 'card') {
+      this.close();
+    }
+  };
+  private readonly documentKeyDownListener = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape' && this.stage === 'card') {
+      this.close();
+    }
+  };
 
   constructor(options: HighlightTranslateUiOptions = {}) {
     this.host.dataset.highlightTranslateRoot = '';
-    this.shadow = this.host.attachShadow({ mode: 'closed' });
+    this.shadow = this.host.attachShadow({ mode: options.shadowMode ?? 'closed' });
     const style = document.createElement('style');
     style.textContent = styles;
     this.shadow.append(style, this.trigger, this.card);
@@ -119,20 +132,15 @@ export class HighlightTranslateUi {
       this.followOutput = distanceFromBottom <= 12;
     });
 
-    document.addEventListener('mouseup', (event) => this.onMouseUp(event), true);
-    document.addEventListener('pointerdown', (event) => {
-      if (!event.composedPath().includes(this.host) && this.stage === 'card') {
-        this.close();
-      }
-    }, true);
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && this.stage === 'card') {
-        this.close();
-      }
-    }, true);
+    document.addEventListener('mouseup', this.documentMouseUpListener, true);
+    document.addEventListener('pointerdown', this.documentPointerDownListener, true);
+    document.addEventListener('keydown', this.documentKeyDownListener, true);
   }
 
   private onMouseUp(event: MouseEvent): void {
+    if (this.disposed) {
+      return;
+    }
     if (this.interaction.consumeGestureMouseUp(event)) {
       return;
     }
@@ -144,6 +152,9 @@ export class HighlightTranslateUi {
   }
 
   private captureSelection(eventTarget: EventTarget | null): void {
+    if (this.disposed) {
+      return;
+    }
     const selection = window.getSelection();
     const targetNode = eventTarget instanceof Node ? eventTarget : null;
 
@@ -180,7 +191,7 @@ export class HighlightTranslateUi {
   }
 
   private openCard(): void {
-    if (!this.activeSelection) {
+    if (this.disposed || !this.activeSelection) {
       return;
     }
 
@@ -224,6 +235,9 @@ export class HighlightTranslateUi {
     }
 
     void navigator.clipboard.writeText(view.text).then(() => {
+      if (this.disposed) {
+        return;
+      }
       this.copyButton.textContent = UI_TEXT.copied;
       if (this.copyFeedbackTimer) {
         clearTimeout(this.copyFeedbackTimer);
@@ -232,16 +246,39 @@ export class HighlightTranslateUi {
         this.copyButton.textContent = UI_TEXT.copy;
       }, 1_500);
     }).catch(() => {
+      if (this.disposed) {
+        return;
+      }
       this.status.dataset.tone = 'error';
       this.status.textContent = UI_TEXT.copyFailed;
     });
   }
 
   private close(): void {
+    if (this.disposed) {
+      return;
+    }
     this.translationClient.cancel();
     this.activeSelection = null;
     this.stage = 'idle';
     this.interaction.hide();
+  }
+
+  dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    document.removeEventListener('mouseup', this.documentMouseUpListener, true);
+    document.removeEventListener('pointerdown', this.documentPointerDownListener, true);
+    document.removeEventListener('keydown', this.documentKeyDownListener, true);
+    if (this.copyFeedbackTimer) {
+      clearTimeout(this.copyFeedbackTimer);
+      this.copyFeedbackTimer = null;
+    }
+    this.translationClient.dispose();
+    this.interaction.dispose();
+    this.host.remove();
   }
 }
 

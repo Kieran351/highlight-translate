@@ -6,10 +6,11 @@ export interface PointerData {
   buttons?: number;
   clientX?: number;
   clientY?: number;
+  composed?: boolean;
 }
 
 export function pointerEvent(type: string, data: PointerData = {}): Event {
-  const event = new Event(type, { bubbles: true, cancelable: true });
+  const event = new Event(type, { bubbles: true, cancelable: true, composed: data.composed ?? false });
   Object.defineProperties(event, {
     pointerId: { configurable: true, value: data.pointerId ?? 1 },
     pointerType: { configurable: true, value: data.pointerType ?? 'mouse' },
